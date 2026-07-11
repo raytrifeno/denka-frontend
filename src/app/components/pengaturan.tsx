@@ -16,6 +16,9 @@ import {
   RotateCcw,
   HardDrive,
   Laptop,
+  CloudUpload,
+  CloudDownload,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -42,6 +45,7 @@ import { cn } from "./ui/utils";
 import { AuthController } from "../../domain/controllers/AuthController";
 import { PenggunaController } from "../../domain/controllers/PenggunaController";
 import { PengaturanController } from "../../domain/controllers/PengaturanController";
+import { CloudSync } from "../../domain/sync/CloudSync";
 import { useController } from "../hooks/use-controller";
 
 type TabId = "toko" | "struk" | "whatsapp" | "kategori" | "akun" | "data";
@@ -556,12 +560,34 @@ function PasswordInput({
 // ---------- 6. Data & Cadangan ----------
 function DataCadangan() {
   const controller = PengaturanController.getInstance();
+  const [sibuk, setSibuk] = useState<"backup" | "restore" | null>(null);
+
+  async function backup() {
+    setSibuk("backup");
+    const hasil = await CloudSync.backup();
+    setSibuk(null);
+    if (hasil.sukses) toast.success(hasil.pesan);
+    else toast.error(hasil.pesan);
+  }
+
+  async function restore() {
+    setSibuk("restore");
+    const hasil = await CloudSync.restore();
+    if (!hasil.sukses) {
+      setSibuk(null);
+      toast.error(hasil.pesan);
+      return;
+    }
+    toast.success(hasil.pesan);
+    // muat ulang agar seluruh controller membaca data terbaru dari lokal
+    setTimeout(() => window.location.reload(), 800);
+  }
 
   return (
     <div>
       <SectionHeader
         title="Data & Cadangan"
-        desc="Seluruh data aplikasi tersimpan otomatis di perangkat ini (localStorage browser)."
+        desc="Data tersimpan otomatis di perangkat, dan bisa dicadangkan ke cloud (Supabase)."
       />
 
       <div className="space-y-4">
@@ -573,11 +599,92 @@ function DataCadangan() {
             <p className="text-sm">Penyimpanan lokal aktif</p>
             <p className="text-xs text-muted-foreground">
               Transaksi, stok, service, pengguna, dan pengaturan disimpan otomatis
-              setiap ada perubahan, dan dimuat kembali saat aplikasi dibuka.
-              Data tidak dikirim ke server mana pun.
+              setiap ada perubahan, dan dimuat kembali saat aplikasi dibuka —
+              tetap berjalan meski tanpa koneksi internet.
             </p>
           </div>
         </div>
+
+        {CloudSync.siap ? (
+          <>
+            <div className="flex flex-col gap-3 rounded-lg border border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm">Backup ke cloud</p>
+                <p className="text-xs text-muted-foreground">
+                  Salin seluruh data perangkat ini ke Supabase. Data di cloud
+                  dibuat sama persis dengan data lokal.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                className="shrink-0 bg-primary-700 text-white hover:bg-primary-500"
+                onClick={backup}
+                disabled={sibuk !== null}
+              >
+                {sibuk === "backup" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <CloudUpload className="size-4" />
+                )}
+                Backup Sekarang
+              </Button>
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-lg border border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm">Restore dari cloud</p>
+                <p className="text-xs text-muted-foreground">
+                  Ganti seluruh data di perangkat ini dengan data cadangan dari
+                  cloud. Data lokal saat ini akan ditimpa.
+                </p>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="shrink-0" disabled={sibuk !== null}>
+                    {sibuk === "restore" ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <CloudDownload className="size-4" />
+                    )}
+                    Restore
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Pulihkan data dari cloud?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Seluruh data di perangkat ini akan diganti dengan data
+                      cadangan terakhir dari cloud. Data lokal yang belum
+                      dicadangkan akan hilang.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Batal</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-primary-700 text-white hover:bg-primary-500"
+                      onClick={restore}
+                    >
+                      Ya, Restore
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-start gap-3 rounded-lg border border-dashed border-border px-4 py-3">
+            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-muted-foreground">
+              <CloudUpload className="size-4" />
+            </span>
+            <div>
+              <p className="text-sm">Backup cloud belum aktif</p>
+              <p className="text-xs text-muted-foreground">
+                Isi <code>VITE_SUPABASE_URL</code> dan <code>VITE_SUPABASE_ANON_KEY</code>{" "}
+                pada berkas <code>.env</code> untuk mengaktifkan backup ke cloud.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3">
           <div>

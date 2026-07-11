@@ -39,7 +39,7 @@ function hariLalu(n: number, jam = 10, menit = 0): Date {
 }
 
 /** Bentuk seluruh isi database saat disimpan ke penyimpanan lokal. */
-interface SnapshotDatabase {
+export interface SnapshotDatabase {
   versi: number;
   barang: DataBarang[];
   supplier: DataSupplier[];
@@ -127,6 +127,22 @@ export class Database {
       }, 250);
     };
     this.semuaRepository.forEach((repo) => repo.subscribe(jadwalkan));
+  }
+
+  /** Snapshot seluruh data — dipakai modul sinkronisasi untuk backup ke cloud. */
+  ambilSnapshot(): SnapshotDatabase {
+    return this.snapshot();
+  }
+
+  /** Ganti seluruh isi database dari snapshot — dipakai saat restore dari cloud. */
+  gantiSemua(data: SnapshotDatabase): void {
+    this.hidrasi(data);
+    this.semuaRepository.forEach((repo) => repo.touch());
+  }
+
+  /** Daftarkan callback yang dipanggil setiap ada perubahan di repository mana pun. */
+  onChange(pendengar: () => void): void {
+    this.semuaRepository.forEach((repo) => repo.subscribe(pendengar));
   }
 
   /** Kembalikan seluruh data ke kondisi awal (seed) dan hapus penyimpanan. */
