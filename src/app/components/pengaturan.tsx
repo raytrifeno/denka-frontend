@@ -18,6 +18,7 @@ import {
   Laptop,
   CloudUpload,
   CloudDownload,
+  FileSpreadsheet,
   Loader2,
   type LucideIcon,
 } from "lucide-react";
@@ -46,6 +47,7 @@ import { AuthController } from "../../domain/controllers/AuthController";
 import { PenggunaController } from "../../domain/controllers/PenggunaController";
 import { PengaturanController } from "../../domain/controllers/PengaturanController";
 import { CloudSync } from "../../domain/sync/CloudSync";
+import { exportToExcel } from "../../domain/export/ExcelExport";
 import { useController } from "../hooks/use-controller";
 
 type TabId = "toko" | "struk" | "whatsapp" | "kategori" | "akun" | "data";
@@ -560,7 +562,15 @@ function PasswordInput({
 // ---------- 6. Data & Cadangan ----------
 function DataCadangan() {
   const controller = PengaturanController.getInstance();
-  const [sibuk, setSibuk] = useState<"backup" | "restore" | null>(null);
+  const [sibuk, setSibuk] = useState<"backup" | "restore" | "ekspor" | null>(null);
+
+  async function ekspor() {
+    setSibuk("ekspor");
+    const hasil = await exportToExcel();
+    setSibuk(null);
+    if (hasil.sukses) toast.success(hasil.pesan);
+    else toast.error(hasil.pesan);
+  }
 
   async function backup() {
     setSibuk("backup");
@@ -603,6 +613,30 @@ function DataCadangan() {
               tetap berjalan meski tanpa koneksi internet.
             </p>
           </div>
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-lg border border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm">Ekspor ke Excel</p>
+            <p className="text-xs text-muted-foreground">
+              Unduh seluruh data penjualan, barang, service, dan mutasi stok
+              sebagai berkas <code>.xlsx</code> yang bisa dibuka di Excel.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={ekspor}
+            disabled={sibuk !== null}
+          >
+            {sibuk === "ekspor" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="size-4" />
+            )}
+            Ekspor Excel
+          </Button>
         </div>
 
         {CloudSync.siap ? (

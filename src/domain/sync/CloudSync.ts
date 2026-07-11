@@ -23,8 +23,26 @@ export interface HasilSync {
   pesan: string;
 }
 
+export interface StatusSync {
+  siap: boolean;
+  sinkron: boolean;
+  terakhirBackup: string | null;
+}
+
+const KUNCI_TERAKHIR = "denka-backup-terakhir";
+
 let sedangRestore = false;
+let sedangBackup = false;
+let terakhirBackup: string | null = null;
 let timerAuto: ReturnType<typeof setTimeout> | null = null;
+const pendengar = new Set<() => void>();
+
+let statusCache: StatusSync = { siap: cloudReady, sinkron: false, terakhirBackup: null };
+
+function beriTahu(): void {
+  statusCache = { siap: cloudReady, sinkron: sedangBackup, terakhirBackup };
+  pendengar.forEach((cb) => cb());
+}
 
 function pesanError(error: unknown): string {
   if (error && typeof error === "object" && "message" in error) {
@@ -56,11 +74,24 @@ export const CloudSync = {
     return cloudReady;
   },
 
+  /** Status terkini untuk indikator di UI (objek stabil untuk useSyncExternalStore). */
+  get status(): StatusSync {
+    return statusCache;
+  },
+
+  /** Berlangganan perubahan status (dipakai indikator sync). */
+  subscribe(cb: () => void): () => void {
+    pendengar.add(cb);
+    return () => pendengar.delete(cb);
+  },
+
   /** Backup (push): cloud menjadi cermin dari data lokal. */
   async backup(): Promise<HasilSync> {
     const cloud = getCloud();
     if (!cloud) return { sukses: false, pesan: "Supabase belum dikonfigurasi." };
 
+    sedangBackup = true;
+    beriTahu();
     try {
       const tables = snapshotToTables(Database.getInstance().ambilSnapshot());
       for (const nama of TABEL) {
@@ -75,9 +106,14 @@ export const CloudSync = {
         if (error) throw error;
       }
 
+      terakhirBackup = new Date().toISOString();
+      PenyimpananLokal.simpan(KUNCI_TERAKHIR, terakhirBackup);
       return { sukses: true, pesan: "Backup ke cloud berhasil." };
     } catch (error) {
       return { sukses: false, pesan: pesanError(error) };
+    } finally {
+      sedangBackup = false;
+      beriTahu();
     }
   },
 
@@ -121,6 +157,8 @@ export const CloudSync = {
   /** Backup otomatis (debounce) setiap ada perubahan saat perangkat online. */
   aktifkanAutoBackup(): void {
     if (!cloudReady) return;
+    terakhirBackup = PenyimpananLokal.muat<string>(KUNCI_TERAKHIR);
+    beriTahu();
     Database.getInstance().onChange(() => {
       if (sedangRestore || !navigator.onLine) return;
       if (timerAuto) clearTimeout(timerAuto);

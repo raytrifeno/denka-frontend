@@ -32,6 +32,7 @@ import { ROLE_LABEL, type Role } from "../navigation";
 import { AuthController } from "../../domain/controllers/AuthController";
 import { LaporanController } from "../../domain/controllers/LaporanController";
 import { useController } from "../hooks/use-controller";
+import { SyncIndicator } from "./sync-indicator";
 
 type TopbarProps = {
   role: Role;
@@ -76,6 +77,10 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onLogout }: Topba
       </div>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
+        <SyncIndicator />
+
+        <Separator orientation="vertical" className="mx-1 hidden h-8 sm:block" />
+
         {/* Notifications */}
         <Popover>
           <PopoverTrigger asChild>
