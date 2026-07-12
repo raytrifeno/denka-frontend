@@ -26,6 +26,7 @@ export default function App() {
   useController(auth);
 
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [active, setActive] = useState("dashboard");
 
   const role = auth.role;
@@ -49,14 +50,17 @@ export default function App() {
         role={role}
         active={active}
         collapsed={collapsed}
-        onSelect={setActive}
+        mobileOpen={mobileOpen}
+        onSelect={(id) => { setActive(id); setMobileOpen(false); }}
         onToggleCollapse={() => setCollapsed((c) => !c)}
+        onCloseMobile={() => setMobileOpen(false)}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
           role={role}
           onRoleChange={(r) => auth.gantiRolePratinjau(r)}
           onToggleCollapse={() => setCollapsed((c) => !c)}
+          onOpenMobile={() => setMobileOpen(true)}
           onLogout={() => auth.logout()}
         />
         <main className="flex-1 overflow-y-auto">

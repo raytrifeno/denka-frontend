@@ -47,7 +47,9 @@ import type { Role } from "../navigation";
 import { LABEL_METODE } from "../../domain/entities/TransaksiPenjualan";
 import type { StatusService } from "../../domain/entities/ServiceOrder";
 import { LaporanController } from "../../domain/controllers/LaporanController";
+import { exportToExcel } from "../../domain/export/ExcelExport";
 import { useController } from "../hooks/use-controller";
+import { toast } from "sonner";
 
 const rupiah = (n: number) => "Rp " + n.toLocaleString("id-ID");
 const fmtDate = (d: Date) => format(d, "dd MMM yyyy", { locale: idLocale });
@@ -84,6 +86,15 @@ export function Laporan({ role }: { role: Role }) {
     from: tujuhHariLalu(),
     to: new Date(),
   });
+  const [exporting, setExporting] = useState(false);
+
+  async function exportExcel() {
+    setExporting(true);
+    const hasil = await exportToExcel();
+    setExporting(false);
+    if (hasil.sukses) toast.success(hasil.pesan);
+    else toast.error(hasil.pesan);
+  }
 
   // guard: jika non-pemilik masih memilih tab keuntungan
   const activeTab = tabs.some((t) => t.id === tab) ? tab : "penjualan";
@@ -91,7 +102,7 @@ export function Laporan({ role }: { role: Role }) {
   const sampai = range?.to ?? range?.from;
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5 p-4 sm:p-6">
+    <div id="print-area" className="mx-auto w-full max-w-7xl space-y-5 p-4 sm:p-6">
       {/* heading + export */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -100,14 +111,14 @@ export function Laporan({ role }: { role: Role }) {
             Analisis penjualan, stok, keuntungan, dan service toko.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline">
+        <div className="no-print flex gap-2">
+          <Button variant="outline" onClick={() => window.print()}>
             <FileText className="size-4" />
             Export PDF
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" onClick={exportExcel} disabled={exporting}>
             <FileSpreadsheet className="size-4" />
-            Export Excel
+            {exporting ? "Mengekspor..." : "Export Excel"}
           </Button>
         </div>
       </div>
@@ -187,7 +198,7 @@ function SummaryCard({
 }: { icon: LucideIcon; label: string; value: string; tone: Tone }) {
   return (
     <Card className="border-border shadow-sm">
-      <CardContent className="flex items-center justify-between gap-3">
+      <CardContent className="flex items-center justify-between gap-3 py-5">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">{label}</p>
           <p className="font-display tnum mt-1.5 truncate text-xl font-semibold tracking-tight text-foreground">{value}</p>

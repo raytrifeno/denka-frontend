@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Store,
   ReceiptText,
@@ -20,6 +20,10 @@ import {
   CloudDownload,
   FileSpreadsheet,
   Loader2,
+  QrCode,
+  Unplug,
+  WifiOff,
+  AlertCircle,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -41,8 +45,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { toast } from "sonner";
 import { cn } from "./ui/utils";
+import {
+  getWhatsAppStatus,
+  logoutWhatsApp,
+  sendReceiptWhatsApp,
+  type WhatsAppState,
+} from "../share";
 import { AuthController } from "../../domain/controllers/AuthController";
 import { PenggunaController } from "../../domain/controllers/PenggunaController";
 import { PengaturanController } from "../../domain/controllers/PengaturanController";
@@ -282,12 +299,79 @@ const WA_VARS = [
   { token: "{nama_toko}", label: "Nama Toko" },
 ];
 
+const WA_STATUS_META: Record<WhatsAppState, { label: string; desc: string }> = {
+  ready: { label: "Terhubung", desc: "Struk siap dikirim otomatis via WhatsApp." },
+  offline: { label: "Layanan mati", desc: "Jalankan `pnpm whatsapp` di backend dulu." },
+  loading: { label: "Belum terhubung", desc: "Hubungkan untuk mulai mengirim struk." },
+  qr: { label: "Menunggu dipindai", desc: "Buka dialog lalu pindai QR dengan HP." },
+  authenticated: { label: "Menyambungkan…", desc: "Sedang menyiapkan sesi." },
+  disconnected: { label: "Terputus", desc: "Hubungkan ulang untuk melanjutkan." },
+  auth_failure: { label: "Gagal autentikasi", desc: "Coba hubungkan lagi." },
+};
+
 function IntegrasiWhatsApp() {
   const controller = PengaturanController.getInstance();
   const awal = controller.whatsapp;
   const [enabled, setEnabled] = useState(awal.aktif);
   const [template, setTemplate] = useState(awal.template);
+  const [serverUrl, setServerUrl] = useState(awal.serverUrl ?? "");
   const ref = useRef<HTMLTextAreaElement>(null);
+
+  const [status, setStatus] = useState<{ state: WhatsAppState; qr: string | null }>({
+    state: "loading",
+    qr: null,
+  });
+  const [qrOpen, setQrOpen] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const connected = status.state === "ready";
+
+  // Polling status layanan — lebih cepat saat dialog QR terbuka.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      const s = await getWhatsAppStatus();
+      if (alive) setStatus(s);
+    };
+    tick();
+    const id = window.setInterval(tick, qrOpen ? 2000 : 8000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [qrOpen]);
+
+  // Tutup dialog otomatis begitu tersambung.
+  useEffect(() => {
+    if (connected && qrOpen) {
+      setQrOpen(false);
+      toast.success("WhatsApp terhubung.");
+    }
+  }, [connected, qrOpen]);
+
+  async function putuskan() {
+    await logoutWhatsApp();
+    setStatus({ state: "loading", qr: null });
+    toast.success("WhatsApp diputuskan.");
+  }
+
+  async function testKirim() {
+    const nomor = controller.toko.telepon;
+    if (!nomor) {
+      toast.error("Isi No. Telepon toko di Profil Toko dulu.");
+      return;
+    }
+    setTesting(true);
+    try {
+      await sendReceiptWhatsApp(nomor, `Tes koneksi WhatsApp dari ${controller.toko.nama || "Denka"}.`);
+      toast.success(`Pesan tes terkirim ke ${nomor}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal mengirim pesan tes.");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const meta = WA_STATUS_META[status.state];
 
   function insertVar(token: string) {
     const el = ref.current;
@@ -308,14 +392,60 @@ function IntegrasiWhatsApp() {
   }
 
   function save() {
-    controller.setWhatsApp({ aktif: enabled, template });
+    controller.setWhatsApp({ aktif: enabled, template, serverUrl: serverUrl.trim() });
     toast.success("Pengaturan WhatsApp disimpan");
   }
 
   return (
     <div>
-      <SectionHeader title="Integrasi WhatsApp" desc="Kirim struk digital otomatis ke pelanggan via WhatsApp." />
+      <SectionHeader title="Integrasi WhatsApp" desc="Hubungkan akun WhatsApp untuk mengirim struk digital ke pelanggan." />
       <div className="space-y-4">
+        {/* Koneksi WhatsApp */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span
+              className={cn(
+                "flex size-10 shrink-0 items-center justify-center rounded-lg",
+                connected ? "bg-success/15 text-success" : "bg-muted text-muted-foreground",
+              )}
+            >
+              <MessageCircle className="size-5" />
+            </span>
+            <div>
+              <p className="text-sm font-medium">{meta.label}</p>
+              <p className="text-xs text-muted-foreground">{meta.desc}</p>
+            </div>
+          </div>
+          {connected ? (
+            <Button variant="outline" size="sm" className="shrink-0" onClick={putuskan}>
+              <Unplug className="size-4" />
+              Putuskan
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              className="shrink-0 bg-primary-700 text-white hover:bg-primary-500"
+              onClick={() => setQrOpen(true)}
+            >
+              <QrCode className="size-4" />
+              Hubungkan
+            </Button>
+          )}
+        </div>
+
+        <Field label="URL Layanan WhatsApp">
+          <Input
+            value={serverUrl}
+            onChange={(e) => setServerUrl(e.target.value)}
+            placeholder="http://localhost:3100"
+            className="bg-input-background"
+          />
+          <p className="text-xs text-muted-foreground">
+            Kosongkan untuk bawaan. Di HP, isi IP LAN PC yang menjalankan layanan
+            (contoh <code>http://192.168.1.10:3100</code>), lalu Simpan.
+          </p>
+        </Field>
+
         <ToggleRow
           title="Aktifkan kirim struk otomatis via WhatsApp"
           desc="Struk akan otomatis dikirim setelah transaksi selesai."
@@ -351,13 +481,59 @@ function IntegrasiWhatsApp() {
             </div>
           </div>
 
-          <Button variant="outline" onClick={() => toast.success("Pesan tes berhasil dikirim")}>
-            <Send className="size-4" />
+          <Button variant="outline" onClick={testKirim} disabled={testing || !connected}>
+            {testing ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             Test Kirim Pesan
           </Button>
+          {!connected && (
+            <p className="text-xs text-muted-foreground">
+              Hubungkan WhatsApp dulu untuk mengirim pesan.
+            </p>
+          )}
         </div>
       </div>
       <SaveBar onSave={save} />
+
+      {/* Dialog QR login WhatsApp */}
+      <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Hubungkan WhatsApp</DialogTitle>
+            <DialogDescription>
+              Di HP: WhatsApp → Perangkat Tertaut → Tautkan Perangkat, lalu pindai kode di bawah.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 py-2">
+            {status.state === "offline" ? (
+              <div className="text-center text-sm text-muted-foreground">
+                <WifiOff className="mx-auto mb-2 size-8" />
+                Layanan WhatsApp belum berjalan.
+                <br />
+                Jalankan <code>pnpm whatsapp</code> di backend.
+              </div>
+            ) : status.state === "auth_failure" ? (
+              <div className="text-center text-sm text-destructive">
+                <AlertCircle className="mx-auto mb-2 size-8" />
+                Gagal autentikasi. Tutup lalu coba lagi.
+              </div>
+            ) : status.state === "qr" && status.qr ? (
+              <>
+                <img
+                  src={status.qr}
+                  alt="Kode QR WhatsApp"
+                  className="size-64 rounded-lg border border-border"
+                />
+                <p className="text-xs text-muted-foreground">Menunggu dipindai…</p>
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-8 animate-spin" />
+                Menyiapkan koneksi…
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

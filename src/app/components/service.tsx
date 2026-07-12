@@ -1,18 +1,13 @@
 import { useState } from "react";
-import { DndProvider, useDrag, useDrop } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import {
   Plus,
   Search,
   Printer,
-  MessageCircle,
   CheckCircle2,
   Wallet,
   Trash2,
-  Clock,
-  Laptop,
   AlertTriangle,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -22,7 +17,6 @@ import { Badge } from "./ui/badge";
 import { Textarea } from "./ui/textarea";
 import { Checkbox } from "./ui/checkbox";
 import { Separator } from "./ui/separator";
-import { Avatar, AvatarFallback } from "./ui/avatar";
 import {
   Select,
   SelectContent,
@@ -30,6 +24,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
 import {
   Sheet,
   SheetContent,
@@ -58,29 +60,29 @@ import {
   type ErrorService,
   type FormServiceBaru,
 } from "../../domain/controllers/ServiceController";
+import { PengaturanController } from "../../domain/controllers/PengaturanController";
 import { useController } from "../hooks/use-controller";
+import { printHTML } from "../share";
 
 // ---------- metadata tampilan ----------
-const STATUS_META: Record<StatusService, { label: string; color: string; badge: string }> = {
-  antri: { label: "Antri", color: "#94A3B8", badge: "bg-muted text-muted-foreground" },
-  diperiksa: { label: "Diperiksa", color: "#2F5C8F", badge: "bg-primary-100 text-primary-500" },
-  dikerjakan: { label: "Dikerjakan", color: "#F59E0B", badge: "bg-amber-100 text-amber" },
-  sparepart: { label: "Tunggu Sparepart", color: "#F59E0B", badge: "bg-amber-100 text-amber" },
-  selesai: { label: "Selesai", color: "#16A34A", badge: "bg-success/15 text-success" },
-  diambil: { label: "Diambil", color: "#1E3A5F", badge: "bg-primary-100 text-primary-700" },
+const STATUS_META: Record<StatusService, { label: string; color: string }> = {
+  antri: { label: "Antri", color: "#94A3B8" },
+  diperiksa: { label: "Diperiksa", color: "#2F5C8F" },
+  dikerjakan: { label: "Dikerjakan", color: "#F59E0B" },
+  sparepart: { label: "Tunggu Sparepart", color: "#F59E0B" },
+  selesai: { label: "Selesai", color: "#16A34A" },
+  diambil: { label: "Diambil", color: "#1E3A5F" },
 };
 
 const rupiah = (n: number) => "Rp " + n.toLocaleString("id-ID");
 const fmtDate = (d: Date) => format(d, "dd MMM yyyy", { locale: idLocale });
 const fmtDateTime = (d: Date) => format(d, "dd MMM yyyy, HH:mm", { locale: idLocale });
-const initials = (name: string) => name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
-
-const CARD_DND = "service-card";
 
 /**
  * Service — boundary class tiket service.
- * Alur status, sparepart (terhubung stok), dan pembuatan tiket dikelola
- * ServiceController; komponen hanya state tampilan (filter, drawer, dialog).
+ * Daftar tiket ditampilkan sebagai tabel; status diubah lewat dropdown per baris
+ * atau di panel detail. Alur status, sparepart (terhubung stok), dan pembuatan
+ * tiket dikelola ServiceController; komponen hanya menyimpan state tampilan.
  */
 export function Service() {
   const controller = ServiceController.getInstance();
@@ -94,7 +96,6 @@ export function Service() {
   const counts = controller.hitungPerStatus();
   const visible = controller.daftar(search, filter);
   const detail = detailId ? controller.cariById(detailId) ?? null : null;
-  const columns = filter === "all" ? URUTAN_STATUS : URUTAN_STATUS.filter((s) => s === filter);
 
   return (
     <div className="flex h-full flex-col gap-4 p-4 sm:p-6">
@@ -126,20 +127,67 @@ export function Service() {
         ))}
       </div>
 
-      {/* kanban */}
-      <DndProvider backend={HTML5Backend}>
-        <div className="flex flex-1 gap-4 overflow-x-auto pb-2">
-          {columns.map((status) => (
-            <KanbanColumn
-              key={status}
-              status={status}
-              services={visible.filter((s) => s.status === status)}
-              onDropCard={(id) => controller.ubahStatus(id, status)}
-              onOpen={setDetailId}
-            />
-          ))}
-        </div>
-      </DndProvider>
+      {/* tabel tiket */}
+      <div className="flex-1 overflow-auto rounded-xl border border-border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="pl-4">No. Service</TableHead>
+              <TableHead>Pelanggan</TableHead>
+              <TableHead>Unit</TableHead>
+              <TableHead className="w-44">Status</TableHead>
+              <TableHead>Teknisi</TableHead>
+              <TableHead>Masuk</TableHead>
+              <TableHead className="pr-4 text-right">Total Biaya</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visible.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                  Tidak ada tiket service.
+                </TableCell>
+              </TableRow>
+            ) : (
+              visible.map((s) => (
+                <TableRow key={s.id} className="cursor-pointer" onClick={() => setDetailId(s.id)}>
+                  <TableCell className="pl-4 font-mono text-sm font-semibold text-primary-700">{s.nomor}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{s.pelanggan}</span>
+                      {s.prioritas === "urgent" && (
+                        <Badge className="border-0 bg-destructive/10 text-destructive">
+                          <AlertTriangle className="size-3" />
+                          Urgent
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{s.jenisUnit} · {s.merk}</TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Select value={s.status} onValueChange={(v) => controller.ubahStatus(s.id, v as StatusService)}>
+                      <SelectTrigger className="h-8 w-full bg-card">
+                        <span className="flex items-center gap-2">
+                          <span className="size-2 rounded-full" style={{ backgroundColor: STATUS_META[s.status].color }} />
+                          <SelectValue />
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {URUTAN_STATUS.map((st) => (
+                          <SelectItem key={st} value={st}>{STATUS_META[st].label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{s.teknisi}</TableCell>
+                  <TableCell className="text-muted-foreground">{fmtDate(s.tanggalMasuk)}</TableCell>
+                  <TableCell className="pr-4 text-right tnum">{rupiah(s.totalBiaya())}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       <ServiceDrawer service={detail} onClose={() => setDetailId(null)} />
       <AddServiceDialog open={addOpen} onOpenChange={setAddOpen} />
@@ -168,98 +216,33 @@ function FilterChip({
   );
 }
 
-// ---------- column ----------
-function KanbanColumn({
-  status, services, onDropCard, onOpen,
-}: { status: StatusService; services: ServiceOrder[]; onDropCard: (id: string) => void; onOpen: (id: string) => void }) {
-  const [{ isOver }, drop] = useDrop(() => ({
-    accept: CARD_DND,
-    drop: (item: { id: string }) => onDropCard(item.id),
-    collect: (m) => ({ isOver: m.isOver() }),
-  }), [onDropCard]);
+// ---------- cetak invoice & update WhatsApp ----------
+const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
 
-  const meta = STATUS_META[status];
-
-  return (
-    <div
-      ref={drop as unknown as React.Ref<HTMLDivElement>}
-      className={cn("flex w-72 shrink-0 flex-col rounded-xl border bg-muted/40 transition-colors", isOver ? "border-primary-500 bg-primary-100/50" : "border-border")}
-    >
-      <div
-        className="flex items-center justify-between gap-2 rounded-t-xl px-3 py-3"
-        style={{ backgroundColor: meta.color + "1A", borderBottom: `2px solid ${meta.color}` }}
-      >
-        <div className="flex items-center gap-2">
-          <span className="size-2.5 rounded-full" style={{ backgroundColor: meta.color }} />
-          <span className="text-sm font-semibold" style={{ color: meta.color }}>{meta.label}</span>
-        </div>
-        <span className="flex min-w-6 items-center justify-center rounded-full bg-card px-1.5 text-xs text-foreground">
-          {services.length}
-        </span>
-      </div>
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
-        {services.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border py-8 text-xs text-muted-foreground">
-            Tarik kartu ke sini
-          </div>
-        ) : (
-          services.map((s) => <ServiceCard key={s.id} service={s} onOpen={onOpen} />)
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ---------- card ----------
-function ServiceCard({ service, onOpen }: { service: ServiceOrder; onOpen: (id: string) => void }) {
-  const [{ isDragging }, drag] = useDrag(() => ({
-    type: CARD_DND,
-    item: { id: service.id },
-    collect: (m) => ({ isDragging: m.isDragging() }),
-  }), [service.id]);
-
-  const meta = STATUS_META[service.status];
-
-  return (
-    <div
-      ref={drag as unknown as React.Ref<HTMLDivElement>}
-      onClick={() => onOpen(service.id)}
-      style={{ borderLeft: `3px solid ${meta.color}` }}
-      className={cn(
-        "cursor-grab rounded-xl border border-border bg-card p-3 shadow-sm transition-all hover:shadow-md active:cursor-grabbing",
-        isDragging && "opacity-50",
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-sm font-semibold text-primary-700">{service.nomor}</span>
-        {service.prioritas === "urgent" && (
-          <Badge className="border-0 bg-destructive/10 text-destructive">
-            <AlertTriangle className="size-3" />
-            Urgent
-          </Badge>
-        )}
-      </div>
-      <p className="mt-1.5 font-semibold text-foreground">{service.pelanggan}</p>
-      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Laptop className="size-3.5" />
-        {service.jenisUnit} · {service.merk}
-      </div>
-      <p className="mt-1.5 line-clamp-1 text-xs text-muted-foreground">{service.keluhan}</p>
-      <Separator className="my-2.5" />
-      <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="size-3" />
-          {fmtDate(service.tanggalMasuk)}
-        </span>
-        <div className="flex items-center gap-1.5">
-          <Avatar className="size-6">
-            <AvatarFallback className="bg-primary text-[10px] text-primary-foreground">{initials(service.teknisi)}</AvatarFallback>
-          </Avatar>
-          <span className="text-xs text-muted-foreground">{service.teknisi}</span>
-        </div>
-      </div>
-    </div>
-  );
+function invoiceHTML(service: ServiceOrder): string {
+  const toko = PengaturanController.getInstance().toko;
+  const parts = service.sparepart
+    .map((p) => `<div class="row"><span>${p.jumlah}× ${esc(p.nama)}</span><span>${rupiah(p.subtotal())}</span></div>`)
+    .join("");
+  return `
+    <h1>${esc(toko.nama)}</h1>
+    <p class="center muted">${esc(toko.alamat)}<br>${esc(toko.telepon)}</p>
+    <hr>
+    <div class="row"><span class="muted">Invoice</span><span>${esc(service.nomor)}</span></div>
+    <div class="row"><span class="muted">Tanggal</span><span>${fmtDate(service.tanggalMasuk)}</span></div>
+    <div class="row"><span class="muted">Pelanggan</span><span>${esc(service.pelanggan)}</span></div>
+    <div class="row"><span class="muted">Unit</span><span>${esc(service.jenisUnit)} ${esc(service.merk)}</span></div>
+    <hr>
+    <div class="row"><span class="muted">Keluhan</span></div>
+    <p>${esc(service.keluhan)}</p>
+    ${service.diagnosa ? `<div class="row"><span class="muted">Diagnosa</span></div><p>${esc(service.diagnosa)}</p>` : ""}
+    <hr>
+    ${parts || `<p class="muted">Tanpa sparepart</p>`}
+    <div class="row"><span class="muted">Biaya Jasa</span><span>${rupiah(service.biayaJasa)}</span></div>
+    <hr>
+    <div class="row total"><span>TOTAL</span><span>${rupiah(service.totalBiaya())}</span></div>
+    <hr>
+    <p class="center muted">Terima kasih — ${esc(toko.nama)}</p>`;
 }
 
 // ---------- detail drawer ----------
@@ -310,7 +293,7 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" aria-label="Cetak invoice service">
+            <Button variant="outline" size="icon" aria-label="Cetak invoice service" onClick={() => printHTML(invoiceHTML(service))}>
               <Printer className="size-4" />
             </Button>
           </div>
@@ -448,10 +431,6 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
 
       {/* sticky footer */}
       <div className="sticky bottom-0 flex flex-col gap-2 border-t border-border bg-card p-4">
-        <Button variant="outline" className="w-full">
-          <MessageCircle className="size-4 text-success" />
-          Kirim Update via WhatsApp
-        </Button>
         <div className="grid grid-cols-2 gap-2">
           <Button
             className="bg-success text-white hover:bg-success/90"

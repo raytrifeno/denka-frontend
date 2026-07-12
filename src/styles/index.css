@@ -1,3 +1,12 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* Cetak/Export PDF: hanya area bertanda #print-area (mis. isi Laporan),
+   bukan sidebar/topbar seluruh aplikasi. */
+@media print {
+  body * { visibility: hidden; }
+  #print-area, #print-area * { visibility: visible; }
+  #print-area { position: absolute; inset: 0; width: 100%; padding: 1rem; }
+  .no-print { display: none !important; }
+}

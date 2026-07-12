@@ -18,6 +18,9 @@ export interface PengaturanStruk {
 export interface PengaturanWhatsApp {
   aktif: boolean;
   template: string;
+  // URL layanan whatsapp-web.js. Kosong = pakai bawaan (VITE_WHATSAPP_URL /
+  // localhost). Di HP, isi IP LAN PC yang menjalankan `pnpm whatsapp`.
+  serverUrl?: string;
 }
 
 interface DataPengaturan {
@@ -44,6 +47,7 @@ const BAWAAN: DataPengaturan = {
     aktif: true,
     template:
       "Halo {nama_pelanggan}, terima kasih telah berbelanja di {nama_toko}. Transaksi {no_transaksi} sebesar {total_belanja} telah berhasil. Struk digital terlampir.",
+    serverUrl: "",
   },
   kategoriTambahan: [],
 };

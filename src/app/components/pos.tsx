@@ -29,12 +29,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 import { cn } from "./ui/utils";
 import type { KategoriBarang } from "../../domain/entities/Barang";
 import { LABEL_METODE, type MetodePembayaran } from "../../domain/entities/TransaksiPenjualan";
 import { TransaksiController } from "../../domain/controllers/TransaksiController";
 import { PengaturanController } from "../../domain/controllers/PengaturanController";
+import type { TransaksiPenjualan } from "../../domain/entities/TransaksiPenjualan";
 import { useController } from "../hooks/use-controller";
+import { printHTML, sendReceiptPdfWhatsApp, type ReceiptData } from "../share";
+import { KATEGORI_FOTO } from "../kategori-foto";
+import { toast } from "sonner";
 
 const CATEGORIES: { id: "all" | KategoriBarang; label: string }[] = [
   { id: "all", label: "Semua" },
@@ -46,6 +51,68 @@ const CATEGORIES: { id: "all" | KategoriBarang; label: string }[] = [
 ];
 
 const rupiah = (n: number) => "Rp " + n.toLocaleString("id-ID");
+
+const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
+
+function receiptHTML(trx: TransaksiPenjualan): string {
+  const settings = PengaturanController.getInstance();
+  const store = settings.toko;
+  const receipt = settings.struk;
+  const rows = trx.items
+    .map((i) => `<div class="row"><span>${i.jumlah}× ${esc(i.namaBarang)}</span><span>${rupiah(i.subtotal())}</span></div>`)
+    .join("");
+  const cashRows = trx.metode === "tunai"
+    ? `<div class="row"><span class="muted">Tunai</span><span>${rupiah(trx.uangDiterima)}</span></div>
+       <div class="row"><span class="muted">Kembalian</span><span>${rupiah(trx.kembalian())}</span></div>`
+    : "";
+  return `
+    <h1>${esc(store.nama)}</h1>
+    ${receipt.tampilkanAlamat ? `<p class="center muted">${esc(store.alamat)}<br>${esc(store.telepon)}</p>` : ""}
+    <hr>
+    <div class="row"><span class="muted">No.</span><span>${esc(trx.nomor)}</span></div>
+    <div class="row"><span class="muted">Kasir</span><span>${esc(trx.kasir)}</span></div>
+    <div class="row"><span class="muted">Tanggal</span><span>${trx.tanggal.toLocaleString("id-ID")}</span></div>
+    <hr>
+    ${rows}
+    <hr>
+    <div class="row"><span class="muted">Subtotal</span><span>${rupiah(trx.subtotal())}</span></div>
+    ${trx.diskon() > 0 ? `<div class="row"><span class="muted">Diskon</span><span>- ${rupiah(trx.diskon())}</span></div>` : ""}
+    <div class="row total"><span>TOTAL</span><span>${rupiah(trx.total())}</span></div>
+    ${cashRows}
+    <hr>
+    <p class="center muted">${esc(receipt.footer)}</p>`;
+}
+
+// Data struk terstruktur untuk dikirim ke layanan (dirender jadi PDF).
+function receiptData(trx: TransaksiPenjualan): ReceiptData {
+  const settings = PengaturanController.getInstance();
+  const store = settings.toko;
+  return {
+    store: {
+      nama: store.nama,
+      alamat: store.alamat,
+      telepon: store.telepon,
+      tampilkanAlamat: settings.struk.tampilkanAlamat,
+    },
+    nomor: trx.nomor,
+    kasir: trx.kasir,
+    tanggal: trx.tanggal.toLocaleString("id-ID"),
+    items: trx.items.map((i) => ({
+      nama: i.namaBarang,
+      jumlah: i.jumlah,
+      harga: i.hargaSatuan,
+      subtotal: i.subtotal(),
+    })),
+    subtotal: trx.subtotal(),
+    diskon: trx.diskon(),
+    total: trx.total(),
+    metode: LABEL_METODE[trx.metode],
+    tunai: trx.metode === "tunai",
+    uangDiterima: trx.uangDiterima,
+    kembalian: trx.kembalian(),
+    footer: settings.struk.footer,
+  };
+}
 
 /**
  * POS — boundary class Point of Sale.
@@ -59,6 +126,7 @@ export function POS() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<"all" | KategoriBarang>("all");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
   const [pesanGagal, setPesanGagal] = useState<string | null>(null);
 
   const filtered = controller.katalog(search, category);
@@ -76,6 +144,7 @@ export function POS() {
     const hasil = controller.prosesPembayaran();
     if (hasil.sukses) {
       setPesanGagal(null);
+      setCartOpen(false);
       setConfirmOpen(true);
     } else {
       setPesanGagal(hasil.pesan ?? "Pembayaran gagal.");
@@ -88,6 +157,181 @@ export function POS() {
   }
 
   const trx = controller.transaksiTerakhir;
+
+  const [waSending, setWaSending] = useState(false);
+  async function kirimStrukWA() {
+    if (!trx) return;
+    const phone = trx.whatsappPelanggan ?? "";
+    if (!phone) {
+      toast.error("Nomor WhatsApp pelanggan kosong. Isi di panel pembayaran sebelum bayar.");
+      return;
+    }
+    setWaSending(true);
+    try {
+      await sendReceiptPdfWhatsApp(phone, receiptData(trx));
+      toast.success("Struk PDF terkirim via WhatsApp.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal mengirim struk.");
+    } finally {
+      setWaSending(false);
+    }
+  }
+
+  const cartInner = (
+    <>
+      <div className="flex items-center justify-between border-b border-border px-4 py-4">
+        <div className="flex items-center gap-2">
+          <ShoppingCart className="size-5 text-primary-700" />
+          <h2>Keranjang</h2>
+        </div>
+        {cartCount > 0 && <Badge variant="secondary">{cartCount} item</Badge>}
+      </div>
+
+      {/* items */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {cart.length === 0 ? (
+          <EmptyCart />
+        ) : (
+          <div className="space-y-3">
+            {cart.map((item) => (
+              <div key={item.barang.id} className="rounded-lg border border-border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="line-clamp-1 text-sm text-foreground">{item.barang.nama}</p>
+                    <p className="text-xs text-muted-foreground">{rupiah(item.barang.hargaJual)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => controller.hapusDariKeranjang(item.barang.id)}
+                    aria-label="Hapus item"
+                    className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <StepBtn label="Kurangi" onClick={() => controller.ubahJumlah(item.barang.id, -1)}>
+                      <Minus className="size-3.5" />
+                    </StepBtn>
+                    <span className="w-8 text-center text-sm">{item.jumlah}</span>
+                    <StepBtn
+                      label="Tambah"
+                      disabled={item.jumlah >= item.barang.stok}
+                      onClick={() => controller.ubahJumlah(item.barang.id, 1)}
+                    >
+                      <Plus className="size-3.5" />
+                    </StepBtn>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {rupiah(item.subtotal())}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* summary */}
+      {cart.length > 0 && (
+        <div className="space-y-3 border-t border-border p-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span>{rupiah(subtotal)}</span>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <span className="text-muted-foreground">Diskon</span>
+            <div className="flex items-center gap-1">
+              <div className="flex overflow-hidden rounded-md border border-border">
+                <button
+                  type="button"
+                  onClick={() => controller.setDiskon("rp", controller.nilaiDiskon)}
+                  className={cn("px-2 py-1 text-xs transition-colors", controller.tipeDiskon === "rp" ? "bg-primary-700 text-white" : "text-muted-foreground hover:bg-muted")}
+                >Rp</button>
+                <button
+                  type="button"
+                  onClick={() => controller.setDiskon("percent", controller.nilaiDiskon)}
+                  className={cn("px-2 py-1 text-xs transition-colors", controller.tipeDiskon === "percent" ? "bg-primary-700 text-white" : "text-muted-foreground hover:bg-muted")}
+                >%</button>
+              </div>
+              <Input
+                type="number" min={0}
+                value={controller.nilaiDiskon || ""}
+                onChange={(e) => controller.setDiskon(controller.tipeDiskon, Math.max(0, Number(e.target.value)))}
+                className="h-8 w-20 text-right"
+                placeholder="0"
+              />
+            </div>
+          </div>
+          {discount > 0 && (
+            <div className="flex items-center justify-between text-sm text-success">
+              <span>Potongan</span><span>- {rupiah(discount)}</span>
+            </div>
+          )}
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Total Akhir</span>
+            <span className="font-display tnum text-[1.75rem] font-bold leading-none tracking-tight text-primary-900">{rupiah(total)}</span>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Metode Pembayaran</Label>
+            <Select value={payment} onValueChange={(v) => controller.setMetode(v as MetodePembayaran)}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tunai">Tunai</SelectItem>
+                <SelectItem value="transfer">Transfer</SelectItem>
+                <SelectItem value="qris">QRIS</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {payment === "tunai" && (
+            <div className="space-y-2">
+              <Label>Uang Diterima</Label>
+              <Input
+                type="number" min={0}
+                value={cashReceived || ""}
+                onChange={(e) => controller.setUangDiterima(Math.max(0, Number(e.target.value)))}
+                placeholder="0"
+              />
+              <div className="flex items-center justify-between rounded-md bg-muted px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Kembalian</span>
+                <span className={cn(cashReceived >= total ? "font-semibold text-success" : "text-destructive")}>
+                  {cashReceived >= total ? rupiah(change) : "Uang kurang"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>No. WhatsApp Pelanggan (opsional)</Label>
+            <Input
+              type="tel"
+              value={controller.whatsapp}
+              onChange={(e) => controller.setWhatsapp(e.target.value)}
+              placeholder="08xxxxxxxxxx"
+            />
+          </div>
+
+          {pesanGagal && <p className="text-xs text-destructive">{pesanGagal}</p>}
+
+          <button
+            type="button"
+            disabled={!controller.bisaBayar()}
+            onClick={bayar}
+            className="flex h-12 w-full items-center justify-center rounded-md bg-amber font-bold text-primary-900 transition-colors hover:bg-amber/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Proses Pembayaran
+          </button>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="flex h-full">
@@ -135,7 +379,7 @@ export function POS() {
         </div>
 
         {/* product grid */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pb-24 lg:pb-0">
           {filtered.length === 0 ? (
             <div className="flex h-full min-h-48 flex-col items-center justify-center text-center text-muted-foreground">
               <Search className="mb-2 size-8 opacity-40" />
@@ -160,9 +404,12 @@ export function POS() {
                   >
                     {/* photo */}
                     <div className="relative aspect-[4/3] bg-muted">
-                      <div className="flex h-full items-center justify-center text-muted-foreground/40">
-                        <ShoppingCart className="size-8" />
-                      </div>
+                      <img
+                        src={KATEGORI_FOTO[p.kategori]}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
                       {out && (
                         <div className="absolute inset-0 flex items-center justify-center bg-foreground/45">
                           <span className="rounded-md bg-foreground/80 px-2.5 py-1 text-xs text-background">
@@ -188,160 +435,46 @@ export function POS() {
         </div>
       </div>
 
-      {/* RIGHT — cart (32%) fixed */}
+      {/* RIGHT — cart panel (desktop) */}
       <div className="hidden w-[32%] max-w-md shrink-0 flex-col border-l border-border bg-card lg:flex">
-        <div className="flex items-center justify-between border-b border-border px-4 py-4">
-          <div className="flex items-center gap-2">
-            <ShoppingCart className="size-5 text-primary-700" />
-            <h2>Keranjang</h2>
-          </div>
-          {cartCount > 0 && <Badge variant="secondary">{cartCount} item</Badge>}
-        </div>
-
-        {/* items */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {cart.length === 0 ? (
-            <EmptyCart />
-          ) : (
-            <div className="space-y-3">
-              {cart.map((item) => (
-                <div key={item.barang.id} className="rounded-lg border border-border p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="line-clamp-1 text-sm text-foreground">{item.barang.nama}</p>
-                      <p className="text-xs text-muted-foreground">{rupiah(item.barang.hargaJual)}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => controller.hapusDariKeranjang(item.barang.id)}
-                      aria-label="Hapus item"
-                      className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between">
-                    <div className="flex items-center gap-1">
-                      <StepBtn label="Kurangi" onClick={() => controller.ubahJumlah(item.barang.id, -1)}>
-                        <Minus className="size-3.5" />
-                      </StepBtn>
-                      <span className="w-8 text-center text-sm">{item.jumlah}</span>
-                      <StepBtn
-                        label="Tambah"
-                        disabled={item.jumlah >= item.barang.stok}
-                        onClick={() => controller.ubahJumlah(item.barang.id, 1)}
-                      >
-                        <Plus className="size-3.5" />
-                      </StepBtn>
-                    </div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {rupiah(item.subtotal())}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* summary */}
-        {cart.length > 0 && (
-          <div className="space-y-3 border-t border-border p-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{rupiah(subtotal)}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-2 text-sm">
-              <span className="text-muted-foreground">Diskon</span>
-              <div className="flex items-center gap-1">
-                <div className="flex overflow-hidden rounded-md border border-border">
-                  <button
-                    type="button"
-                    onClick={() => controller.setDiskon("rp", controller.nilaiDiskon)}
-                    className={cn("px-2 py-1 text-xs transition-colors", controller.tipeDiskon === "rp" ? "bg-primary-700 text-white" : "text-muted-foreground hover:bg-muted")}
-                  >Rp</button>
-                  <button
-                    type="button"
-                    onClick={() => controller.setDiskon("percent", controller.nilaiDiskon)}
-                    className={cn("px-2 py-1 text-xs transition-colors", controller.tipeDiskon === "percent" ? "bg-primary-700 text-white" : "text-muted-foreground hover:bg-muted")}
-                  >%</button>
-                </div>
-                <Input
-                  type="number" min={0}
-                  value={controller.nilaiDiskon || ""}
-                  onChange={(e) => controller.setDiskon(controller.tipeDiskon, Math.max(0, Number(e.target.value)))}
-                  className="h-8 w-20 text-right"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-            {discount > 0 && (
-              <div className="flex items-center justify-between text-sm text-success">
-                <span>Potongan</span><span>- {rupiah(discount)}</span>
-              </div>
-            )}
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Total Akhir</span>
-              <span className="font-display tnum text-[1.75rem] font-bold leading-none tracking-tight text-primary-900">{rupiah(total)}</span>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Metode Pembayaran</Label>
-              <Select value={payment} onValueChange={(v) => controller.setMetode(v as MetodePembayaran)}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tunai">Tunai</SelectItem>
-                  <SelectItem value="transfer">Transfer</SelectItem>
-                  <SelectItem value="qris">QRIS</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {payment === "tunai" && (
-              <div className="space-y-2">
-                <Label>Uang Diterima</Label>
-                <Input
-                  type="number" min={0}
-                  value={cashReceived || ""}
-                  onChange={(e) => controller.setUangDiterima(Math.max(0, Number(e.target.value)))}
-                  placeholder="0"
-                />
-                <div className="flex items-center justify-between rounded-md bg-muted px-3 py-2 text-sm">
-                  <span className="text-muted-foreground">Kembalian</span>
-                  <span className={cn(cashReceived >= total ? "font-semibold text-success" : "text-destructive")}>
-                    {cashReceived >= total ? rupiah(change) : "Uang kurang"}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>No. WhatsApp Pelanggan (opsional)</Label>
-              <Input
-                type="tel"
-                value={controller.whatsapp}
-                onChange={(e) => controller.setWhatsapp(e.target.value)}
-                placeholder="08xxxxxxxxxx"
-              />
-            </div>
-
-            {pesanGagal && <p className="text-xs text-destructive">{pesanGagal}</p>}
-
-            <button
-              type="button"
-              disabled={!controller.bisaBayar()}
-              onClick={bayar}
-              className="flex h-12 w-full items-center justify-center rounded-md bg-amber font-bold text-primary-900 transition-colors hover:bg-amber/90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Proses Pembayaran
-            </button>
-          </div>
-        )}
+        {cartInner}
       </div>
+
+      {/* Mobile — bar checkout + drawer keranjang */}
+      <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card p-3 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setCartOpen(true)}
+          aria-label="Buka keranjang"
+          className="relative flex size-11 shrink-0 items-center justify-center rounded-md border border-border"
+        >
+          <ShoppingCart className="size-5 text-primary-700" />
+          {cartCount > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 flex min-w-5 items-center justify-center rounded-full bg-amber px-1 text-[11px] font-bold text-primary-900">
+              {cartCount}
+            </span>
+          )}
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">Total</p>
+          <p className="font-display tnum truncate text-lg font-bold text-primary-900">{rupiah(total)}</p>
+        </div>
+        <button
+          type="button"
+          disabled={cart.length === 0}
+          onClick={() => setCartOpen(true)}
+          className="flex h-11 items-center rounded-md bg-amber px-5 font-bold text-primary-900 transition-colors hover:bg-amber/90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Keranjang
+        </button>
+      </div>
+
+      <Sheet open={cartOpen} onOpenChange={setCartOpen}>
+        <SheetContent side="right" className="flex w-full max-w-md flex-col p-0">
+          <SheetTitle className="sr-only">Keranjang</SheetTitle>
+          {cartInner}
+        </SheetContent>
+      </Sheet>
 
       {/* confirmation modal — menampilkan entity TransaksiPenjualan tersimpan */}
       <Dialog open={confirmOpen} onOpenChange={(v) => { if (!v) transaksiBaru(); }}>
@@ -392,13 +525,13 @@ export function POS() {
           )}
 
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => trx && printHTML(receiptHTML(trx))}>
               <Printer className="size-4" />
               Cetak Struk
             </Button>
-            <Button variant="outline">
+            <Button variant="outline" onClick={kirimStrukWA} disabled={waSending}>
               <MessageCircle className="size-4 text-success" />
-              Kirim via WhatsApp
+              {waSending ? "Mengirim..." : "Kirim via WhatsApp"}
             </Button>
           </div>
           <Button className="w-full bg-primary-700 text-white hover:bg-primary-500" onClick={transaksiBaru}>

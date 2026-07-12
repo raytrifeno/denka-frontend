@@ -38,6 +38,7 @@ type TopbarProps = {
   role: Role;
   onRoleChange: (role: Role) => void;
   onToggleCollapse: () => void;
+  onOpenMobile: () => void;
   onLogout: () => void;
 };
 
@@ -45,7 +46,7 @@ type TopbarProps = {
  * Topbar — boundary class. Identitas pengguna dari AuthController,
  * notifikasi (stok menipis & service) dari LaporanController.
  */
-export function Topbar({ role, onRoleChange, onToggleCollapse, onLogout }: TopbarProps) {
+export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onLogout }: TopbarProps) {
   const auth = AuthController.getInstance();
   const laporan = LaporanController.getInstance();
   useController(auth);
@@ -56,12 +57,23 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onLogout }: Topba
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
+      {/* Mobile: buka drawer menu */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onOpenMobile}
+        aria-label="Buka menu"
+        className="shrink-0 lg:hidden"
+      >
+        <PanelLeft className="size-5" />
+      </Button>
+      {/* Desktop: minimalkan/perluas sidebar */}
       <Button
         variant="ghost"
         size="icon"
         onClick={onToggleCollapse}
         aria-label="Toggle sidebar"
-        className="shrink-0"
+        className="hidden shrink-0 lg:inline-flex"
       >
         <PanelLeft className="size-5" />
       </Button>

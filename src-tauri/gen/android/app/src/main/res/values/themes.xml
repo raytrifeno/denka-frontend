@@ -1,0 +1,8 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.app" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Status bar brand gelap + ikon putih, sejajar meta theme-color web. -->
+        <item name="android:statusBarColor">#14253B</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

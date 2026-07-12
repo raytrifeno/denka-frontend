@@ -35,7 +35,7 @@ export const PILIHAN_KELENGKAPAN = [
 
 /**
  * ServiceController — controller class untuk tiket service komputer.
- * Mengatur alur status (kanban), sparepart (terhubung ke stok Barang),
+ * Mengatur alur status, sparepart (terhubung ke stok Barang),
  * dan pembuatan tiket baru.
  */
 export class ServiceController extends Observable {
