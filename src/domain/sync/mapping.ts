@@ -1,18 +1,18 @@
-import type { SnapshotDatabase } from "../Database";
-import type { DataBarang, KategoriBarang } from "../entities/Barang";
-import type { DataSupplier } from "../entities/Supplier";
-import type { DataPengguna, RolePengguna } from "../entities/Pengguna";
+import type { DatabaseSnapshot } from "../Database";
+import type { ProductData, ProductCategory } from "../entities/Product";
+import type { SupplierData } from "../entities/Supplier";
+import type { UserData, UserRole } from "../entities/User";
 import type {
-  MetodePembayaran,
-  TipeDiskon,
-  TransaksiJSON,
-} from "../entities/TransaksiPenjualan";
+  PaymentMethod,
+  DiscountType,
+  SaleJSON,
+} from "../entities/Sale";
 import type {
-  PrioritasService,
+  ServicePriority,
   ServiceOrderJSON,
-  StatusService,
+  ServiceStatus,
 } from "../entities/ServiceOrder";
-import type { AlasanKeluar, MutasiStokJSON } from "../entities/MutasiStok";
+import type { StockOutReason, StockMovementJSON } from "../entities/StockMovement";
 
 // Baris tabel Supabase — nama kolom mengikuti backend/supabase/schema.sql.
 
@@ -135,64 +135,64 @@ export interface CloudTables {
 }
 
 /** Snapshot lokal → baris-baris tabel Supabase (ternormalisasi). */
-export function snapshotToTables(snap: SnapshotDatabase): CloudTables {
-  const users: UserRow[] = snap.pengguna.map((u) => ({
+export function snapshotToTables(snap: DatabaseSnapshot): CloudTables {
+  const users: UserRow[] = snap.users.map((u) => ({
     id: u.id,
-    name: u.nama,
+    name: u.name,
     username: u.username,
     email: u.email,
     password: u.password,
     role: u.role,
-    active: u.aktif,
-    last_login: u.terakhirLogin ? new Date(u.terakhirLogin).toISOString() : null,
+    active: u.active,
+    last_login: u.lastLogin ? new Date(u.lastLogin).toISOString() : null,
   }));
 
-  const suppliers: SupplierRow[] = snap.supplier.map((s) => ({
+  const suppliers: SupplierRow[] = snap.suppliers.map((s) => ({
     id: s.id,
-    name: s.nama,
-    contact_person: s.kontakPerson || null,
-    phone: s.telepon || null,
-    address: s.alamat || null,
-    notes: s.catatan ?? null,
-    items_supplied: s.barangDisuplai ? JSON.stringify(s.barangDisuplai) : null,
+    name: s.name,
+    contact_person: s.contactPerson || null,
+    phone: s.phone || null,
+    address: s.address || null,
+    notes: s.notes ?? null,
+    items_supplied: s.suppliedItems ? JSON.stringify(s.suppliedItems) : null,
   }));
 
-  const products: ProductRow[] = snap.barang.map((b) => ({
+  const products: ProductRow[] = snap.products.map((b) => ({
     id: b.id,
-    code: b.kode,
-    name: b.nama,
-    category: b.kategori,
-    purchase_price: b.hargaBeli,
-    sell_price: b.hargaJual,
-    stock: b.stok,
-    min_stock: b.stokMinimum,
+    code: b.code,
+    name: b.name,
+    category: b.category,
+    purchase_price: b.purchasePrice,
+    sell_price: b.sellPrice,
+    stock: b.stock,
+    min_stock: b.minStock,
     supplier: b.supplier || null,
-    specification: b.spesifikasi ?? null,
+    specification: b.specification ?? null,
   }));
 
   const sales: SaleRow[] = [];
   const sale_items: SaleItemRow[] = [];
-  for (const t of snap.transaksi) {
+  for (const t of snap.sales) {
     sales.push({
       id: t.id,
-      number: t.nomor,
-      sold_at: t.tanggal,
-      cashier_name: t.kasir || null,
-      discount_type: t.tipeDiskon,
-      discount_value: t.nilaiDiskon,
-      payment_method: t.metode,
-      amount_paid: t.uangDiterima,
-      customer_whatsapp: t.whatsappPelanggan ?? null,
+      number: t.number,
+      sold_at: t.date,
+      cashier_name: t.cashier || null,
+      discount_type: t.discountType,
+      discount_value: t.discountValue,
+      payment_method: t.method,
+      amount_paid: t.amountPaid,
+      customer_whatsapp: t.customerWhatsapp ?? null,
     });
     t.items.forEach((item, index) => {
       sale_items.push({
         id: `${t.id}-${index}`,
         sale_id: t.id,
-        product_id: item.barangId || null,
-        product_name: item.namaBarang,
-        unit_price: item.hargaSatuan,
-        unit_cost: item.hargaBeliSatuan,
-        quantity: item.jumlah,
+        product_id: item.productId || null,
+        product_name: item.productName,
+        unit_price: item.unitPrice,
+        unit_cost: item.unitCost,
+        quantity: item.quantity,
       });
     });
   }
@@ -200,58 +200,58 @@ export function snapshotToTables(snap: SnapshotDatabase): CloudTables {
   const service_orders: ServiceOrderRow[] = [];
   const service_parts: ServicePartRow[] = [];
   const service_status_history: ServiceHistoryRow[] = [];
-  for (const s of snap.service) {
+  for (const s of snap.serviceOrders) {
     service_orders.push({
       id: s.id,
-      number: s.nomor,
-      customer_name: s.pelanggan,
-      customer_phone: s.telepon || null,
-      customer_address: s.alamat ?? null,
-      unit_type: s.jenisUnit || null,
-      brand: s.merk || null,
+      number: s.number,
+      customer_name: s.customer,
+      customer_phone: s.phone || null,
+      customer_address: s.address ?? null,
+      unit_type: s.unitType || null,
+      brand: s.brand || null,
       model: s.model ?? null,
-      serial_no: s.nomorSeri ?? null,
-      accessories: s.kelengkapan ? JSON.stringify(s.kelengkapan) : null,
-      complaint: s.keluhan || null,
-      diagnosis: s.diagnosa ?? null,
-      technician: s.teknisi || null,
-      priority: s.prioritas,
+      serial_no: s.serialNo ?? null,
+      accessories: s.accessories ? JSON.stringify(s.accessories) : null,
+      complaint: s.complaint || null,
+      diagnosis: s.diagnosis ?? null,
+      technician: s.technician || null,
+      priority: s.priority,
       status: s.status,
-      received_at: s.tanggalMasuk,
-      service_fee: s.biayaJasa,
+      received_at: s.receivedAt,
+      service_fee: s.serviceFee,
     });
-    s.sparepart.forEach((part) => {
+    s.parts.forEach((part) => {
       service_parts.push({
         id: part.id,
         service_order_id: s.id,
-        product_id: part.barangId || null,
-        name: part.nama,
-        quantity: part.jumlah,
-        price: part.harga,
+        product_id: part.productId || null,
+        name: part.name,
+        quantity: part.quantity,
+        price: part.price,
       });
     });
-    s.riwayat.forEach((log, index) => {
+    s.history.forEach((log, index) => {
       service_status_history.push({
         id: `${s.id}-${index}`,
         service_order_id: s.id,
         status: log.status,
-        changed_at: log.pada,
+        changed_at: log.at,
       });
     });
   }
 
-  const stock_movements: StockMovementRow[] = snap.mutasiStok.map((m) => ({
+  const stock_movements: StockMovementRow[] = snap.stockMovements.map((m) => ({
     id: m.id,
-    kind: m.jenis,
-    product_name: m.namaBarang,
-    quantity: m.jumlah,
-    moved_at: m.tanggal,
-    recorded_by: m.dicatatOleh || null,
-    note: m.catatan ?? null,
+    kind: m.kind,
+    product_name: m.productName,
+    quantity: m.quantity,
+    moved_at: m.date,
+    recorded_by: m.recordedBy || null,
+    note: m.note ?? null,
     supplier: m.supplier ?? null,
-    unit_price: m.hargaSatuan ?? null,
-    invoice_no: m.noFaktur ?? null,
-    reason: m.alasan ?? null,
+    unit_price: m.unitPrice ?? null,
+    invoice_no: m.invoiceNo ?? null,
+    reason: m.reason ?? null,
   }));
 
   return {
@@ -268,109 +268,109 @@ export function snapshotToTables(snap: SnapshotDatabase): CloudTables {
 }
 
 /** Baris-baris tabel Supabase → snapshot lokal (siap dihidrasi Database). */
-export function tablesToSnapshot(t: CloudTables): SnapshotDatabase {
-  const barang: DataBarang[] = t.products.map((p) => ({
+export function tablesToSnapshot(t: CloudTables): DatabaseSnapshot {
+  const products: ProductData[] = t.products.map((p) => ({
     id: p.id,
-    kode: p.code,
-    nama: p.name,
-    kategori: p.category as KategoriBarang,
-    hargaBeli: Number(p.purchase_price),
-    hargaJual: Number(p.sell_price),
-    stok: Number(p.stock),
-    stokMinimum: Number(p.min_stock),
+    code: p.code,
+    name: p.name,
+    category: p.category as ProductCategory,
+    purchasePrice: Number(p.purchase_price),
+    sellPrice: Number(p.sell_price),
+    stock: Number(p.stock),
+    minStock: Number(p.min_stock),
     supplier: p.supplier ?? "",
-    spesifikasi: p.specification ?? undefined,
+    specification: p.specification ?? undefined,
   }));
 
-  const supplier: DataSupplier[] = t.suppliers.map((s) => ({
+  const suppliers: SupplierData[] = t.suppliers.map((s) => ({
     id: s.id,
-    nama: s.name,
-    kontakPerson: s.contact_person ?? "",
-    telepon: s.phone ?? "",
-    alamat: s.address ?? "",
-    catatan: s.notes ?? undefined,
-    barangDisuplai: parseArray(s.items_supplied),
+    name: s.name,
+    contactPerson: s.contact_person ?? "",
+    phone: s.phone ?? "",
+    address: s.address ?? "",
+    notes: s.notes ?? undefined,
+    suppliedItems: parseArray(s.items_supplied),
   }));
 
-  const pengguna: DataPengguna[] = t.users.map((u) => ({
+  const users: UserData[] = t.users.map((u) => ({
     id: u.id,
-    nama: u.name,
+    name: u.name,
     username: u.username,
     email: u.email,
     password: u.password,
-    role: u.role as RolePengguna,
-    aktif: Boolean(u.active),
-    terakhirLogin: u.last_login ? new Date(u.last_login) : null,
+    role: u.role as UserRole,
+    active: Boolean(u.active),
+    lastLogin: u.last_login ? new Date(u.last_login) : null,
   }));
 
   const itemsBySale = groupBy(t.sale_items, (r) => r.sale_id);
-  const transaksi: TransaksiJSON[] = t.sales.map((s) => ({
+  const sales: SaleJSON[] = t.sales.map((s) => ({
     id: s.id,
-    nomor: s.number,
-    tanggal: s.sold_at,
-    kasir: s.cashier_name ?? "",
+    number: s.number,
+    date: s.sold_at,
+    cashier: s.cashier_name ?? "",
     items: (itemsBySale.get(s.id) ?? []).sort(byIdSuffix).map((item) => ({
-      barangId: item.product_id ?? "",
-      namaBarang: item.product_name,
-      hargaSatuan: Number(item.unit_price),
-      hargaBeliSatuan: Number(item.unit_cost),
-      jumlah: Number(item.quantity),
+      productId: item.product_id ?? "",
+      productName: item.product_name,
+      unitPrice: Number(item.unit_price),
+      unitCost: Number(item.unit_cost),
+      quantity: Number(item.quantity),
     })),
-    tipeDiskon: (s.discount_type ?? "rp") as TipeDiskon,
-    nilaiDiskon: Number(s.discount_value),
-    metode: s.payment_method as MetodePembayaran,
-    uangDiterima: Number(s.amount_paid),
-    whatsappPelanggan: s.customer_whatsapp ?? undefined,
+    discountType: (s.discount_type ?? "rp") as DiscountType,
+    discountValue: Number(s.discount_value),
+    method: s.payment_method as PaymentMethod,
+    amountPaid: Number(s.amount_paid),
+    customerWhatsapp: s.customer_whatsapp ?? undefined,
   }));
 
   const partsByOrder = groupBy(t.service_parts, (r) => r.service_order_id);
   const historyByOrder = groupBy(t.service_status_history, (r) => r.service_order_id);
-  const service: ServiceOrderJSON[] = t.service_orders.map((s) => ({
+  const serviceOrders: ServiceOrderJSON[] = t.service_orders.map((s) => ({
     id: s.id,
-    nomor: s.number,
-    pelanggan: s.customer_name,
-    telepon: s.customer_phone ?? "",
-    alamat: s.customer_address ?? undefined,
-    jenisUnit: s.unit_type ?? "",
-    merk: s.brand ?? "",
+    number: s.number,
+    customer: s.customer_name,
+    phone: s.customer_phone ?? "",
+    address: s.customer_address ?? undefined,
+    unitType: s.unit_type ?? "",
+    brand: s.brand ?? "",
     model: s.model ?? undefined,
-    nomorSeri: s.serial_no ?? undefined,
-    kelengkapan: parseArray(s.accessories),
-    keluhan: s.complaint ?? "",
-    diagnosa: s.diagnosis ?? undefined,
-    teknisi: s.technician ?? "",
-    prioritas: (s.priority ?? "normal") as PrioritasService,
-    status: s.status as StatusService,
-    tanggalMasuk: s.received_at,
-    biayaJasa: Number(s.service_fee),
-    sparepart: (partsByOrder.get(s.id) ?? []).map((part) => ({
+    serialNo: s.serial_no ?? undefined,
+    accessories: parseArray(s.accessories),
+    complaint: s.complaint ?? "",
+    diagnosis: s.diagnosis ?? undefined,
+    technician: s.technician ?? "",
+    priority: (s.priority ?? "normal") as ServicePriority,
+    status: s.status as ServiceStatus,
+    receivedAt: s.received_at,
+    serviceFee: Number(s.service_fee),
+    parts: (partsByOrder.get(s.id) ?? []).map((part) => ({
       id: part.id,
-      barangId: part.product_id ?? "",
-      nama: part.name,
-      jumlah: Number(part.quantity),
-      harga: Number(part.price),
+      productId: part.product_id ?? "",
+      name: part.name,
+      quantity: Number(part.quantity),
+      price: Number(part.price),
     })),
-    riwayat: (historyByOrder.get(s.id) ?? [])
+    history: (historyByOrder.get(s.id) ?? [])
       .slice()
       .sort((a, b) => a.changed_at.localeCompare(b.changed_at))
-      .map((log) => ({ status: log.status as StatusService, pada: log.changed_at })),
+      .map((log) => ({ status: log.status as ServiceStatus, at: log.changed_at })),
   }));
 
-  const mutasiStok: MutasiStokJSON[] = t.stock_movements.map((m) => ({
-    jenis: m.kind === "masuk" ? "masuk" : "keluar",
+  const stockMovements: StockMovementJSON[] = t.stock_movements.map((m) => ({
+    kind: m.kind === "masuk" ? "masuk" : "keluar",
     id: m.id,
-    tanggal: m.moved_at,
-    namaBarang: m.product_name,
-    jumlah: Number(m.quantity),
-    dicatatOleh: m.recorded_by ?? "",
-    catatan: m.note ?? undefined,
+    date: m.moved_at,
+    productName: m.product_name,
+    quantity: Number(m.quantity),
+    recordedBy: m.recorded_by ?? "",
+    note: m.note ?? undefined,
     supplier: m.supplier ?? undefined,
-    hargaSatuan: m.unit_price ?? undefined,
-    noFaktur: m.invoice_no ?? undefined,
-    alasan: (m.reason ?? undefined) as AlasanKeluar | undefined,
+    unitPrice: m.unit_price ?? undefined,
+    invoiceNo: m.invoice_no ?? undefined,
+    reason: (m.reason ?? undefined) as StockOutReason | undefined,
   }));
 
-  return { versi: 1, barang, supplier, pengguna, transaksi, service, mutasiStok };
+  return { version: 1, products, suppliers, users, sales, serviceOrders, stockMovements };
 }
 
 function parseArray(text: string | null): string[] {

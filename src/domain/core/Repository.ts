@@ -37,20 +37,20 @@ export abstract class Repository<T extends Entity> extends Observable {
   }
 
   delete(id: string): boolean {
-    const sebelum = this.rows.length;
+    const before = this.rows.length;
     this.rows = this.rows.filter((row) => row.id !== id);
-    const terhapus = this.rows.length < sebelum;
-    if (terhapus) this.notify();
-    return terhapus;
+    const removed = this.rows.length < before;
+    if (removed) this.notify();
+    return removed;
   }
 
   deleteMany(ids: string[]): number {
     const target = new Set(ids);
-    const sebelum = this.rows.length;
+    const before = this.rows.length;
     this.rows = this.rows.filter((row) => !target.has(row.id));
-    const jumlah = sebelum - this.rows.length;
-    if (jumlah > 0) this.notify();
-    return jumlah;
+    const removedCount = before - this.rows.length;
+    if (removedCount > 0) this.notify();
+    return removedCount;
   }
 
   /** Panggil setelah mengubah isi entity secara langsung (in-place mutation). */

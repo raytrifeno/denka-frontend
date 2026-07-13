@@ -2,6 +2,18 @@
 @import './tailwind.css';
 @import './theme.css';
 
+/* Safe area HP: sisakan ruang untuk status bar (atas) & navigation/gesture
+   bar (bawah) supaya konten tidak tertutup dan tetap bisa diklik. Bernilai 0
+   di desktop / saat sistem sudah menyisipkan inset sendiri. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+.pt-safe { padding-top: var(--safe-top); }
+.pb-safe { padding-bottom: var(--safe-bottom); }
+
 /* Cetak/Export PDF: hanya area bertanda #print-area (mis. isi Laporan),
    bukan sidebar/topbar seluruh aplikasi. */
 @media print {

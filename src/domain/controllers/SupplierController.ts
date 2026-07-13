@@ -1,26 +1,26 @@
 import { Observable } from "../core/Observable";
-import { buatId } from "../core/Entity";
+import { createId } from "../core/Entity";
 import { Database } from "../Database";
 import { Supplier } from "../entities/Supplier";
 
-export interface FormSupplier {
-  nama: string;
-  kontakPerson: string;
-  telepon: string;
-  alamat: string;
-  catatan: string;
+export interface SupplierForm {
+  name: string;
+  contactPerson: string;
+  phone: string;
+  address: string;
+  notes: string;
 }
 
-export type ErrorSupplier = Record<string, string>;
+export type SupplierErrors = Record<string, string>;
 
-/** SupplierController — controller class untuk data pemasok. */
+/** SupplierController — controller for supplier data. */
 export class SupplierController extends Observable {
   private static instance: SupplierController | null = null;
   private db = Database.getInstance();
 
   private constructor() {
     super();
-    this.db.supplier.subscribe(() => this.notify());
+    this.db.suppliers.subscribe(() => this.notify());
   }
 
   static getInstance(): SupplierController {
@@ -30,42 +30,42 @@ export class SupplierController extends Observable {
     return SupplierController.instance;
   }
 
-  daftar(kataKunci = ""): Supplier[] {
-    return this.db.supplier.cari(kataKunci);
+  list(keyword = ""): Supplier[] {
+    return this.db.suppliers.search(keyword);
   }
 
-  validasi(form: FormSupplier): ErrorSupplier {
-    const errors: ErrorSupplier = {};
-    if (!form.nama.trim()) errors.nama = "Nama supplier wajib diisi.";
-    if (!form.kontakPerson.trim()) errors.kontakPerson = "Kontak person wajib diisi.";
-    if (!form.telepon.trim()) errors.telepon = "Nomor telepon wajib diisi.";
-    if (!form.alamat.trim()) errors.alamat = "Alamat wajib diisi.";
+  validate(form: SupplierForm): SupplierErrors {
+    const errors: SupplierErrors = {};
+    if (!form.name.trim()) errors.name = "Nama supplier wajib diisi.";
+    if (!form.contactPerson.trim()) errors.contactPerson = "Kontak person wajib diisi.";
+    if (!form.phone.trim()) errors.phone = "Nomor telepon wajib diisi.";
+    if (!form.address.trim()) errors.address = "Alamat wajib diisi.";
     return errors;
   }
 
-  simpan(form: FormSupplier, idEdit?: string): { sukses: boolean; errors: ErrorSupplier } {
-    const errors = this.validasi(form);
-    if (Object.keys(errors).length > 0) return { sukses: false, errors };
+  save(form: SupplierForm, editId?: string): { success: boolean; errors: SupplierErrors } {
+    const errors = this.validate(form);
+    if (Object.keys(errors).length > 0) return { success: false, errors };
 
     const data = {
-      nama: form.nama.trim(),
-      kontakPerson: form.kontakPerson.trim(),
-      telepon: form.telepon.trim(),
-      alamat: form.alamat.trim(),
-      catatan: form.catatan.trim() || undefined,
+      name: form.name.trim(),
+      contactPerson: form.contactPerson.trim(),
+      phone: form.phone.trim(),
+      address: form.address.trim(),
+      notes: form.notes.trim() || undefined,
     };
 
-    const lama = idEdit ? this.db.supplier.findById(idEdit) : undefined;
-    if (lama) {
-      lama.perbarui(data);
-      this.db.supplier.touch();
+    const existing = editId ? this.db.suppliers.findById(editId) : undefined;
+    if (existing) {
+      existing.update(data);
+      this.db.suppliers.touch();
     } else {
-      this.db.supplier.save(new Supplier({ id: buatId("sup"), ...data }));
+      this.db.suppliers.save(new Supplier({ id: createId("sup"), ...data }));
     }
-    return { sukses: true, errors: {} };
+    return { success: true, errors: {} };
   }
 
-  hapus(id: string): void {
-    this.db.supplier.delete(id);
+  remove(id: string): void {
+    this.db.suppliers.delete(id);
   }
 }

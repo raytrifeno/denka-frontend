@@ -2,7 +2,7 @@ import Database from "@tauri-apps/plugin-sql";
 import { isTauri } from "@tauri-apps/api/core";
 
 /**
- * PenyimpananLokal — satu pintu penyimpanan lokal untuk seluruh domain.
+ * LocalStore — satu pintu penyimpanan lokal untuk seluruh domain.
  * Di aplikasi Tauri datanya tersimpan di SQLite (tabel kv_store) agar aman &
  * mudah di-backup; di browser biasa memakai localStorage sebagai cadangan.
  * `init()` memuat isi SQLite ke cache lebih dulu supaya API tetap sinkron;
@@ -15,7 +15,7 @@ let backend: "sqlite" | "web" = "web";
 const cache: Cache = {};
 const sessionCache: Cache = {};
 
-export class PenyimpananLokal {
+export class LocalStore {
   static async init(): Promise<void> {
     if (!isTauri()) {
       backend = "web";
@@ -29,69 +29,69 @@ export class PenyimpananLokal {
     backend = "sqlite";
   }
 
-  static get tersedia(): boolean {
+  static get available(): boolean {
     return backend === "sqlite" || typeof window !== "undefined";
   }
 
-  static muat<T>(kunci: string, sesi = false): T | null {
-    const teks = PenyimpananLokal.baca(kunci, sesi);
-    if (teks == null) return null;
+  static load<T>(key: string, session = false): T | null {
+    const text = LocalStore.read(key, session);
+    if (text == null) return null;
     try {
-      return JSON.parse(teks) as T;
+      return JSON.parse(text) as T;
     } catch {
       return null;
     }
   }
 
-  static simpan(kunci: string, nilai: unknown, sesi = false): void {
-    PenyimpananLokal.tulis(kunci, JSON.stringify(nilai), sesi);
+  static save(key: string, value: unknown, session = false): void {
+    LocalStore.write(key, JSON.stringify(value), session);
   }
 
-  static hapus(kunci: string, sesi = false): void {
+  static remove(key: string, session = false): void {
     if (backend === "sqlite") {
-      if (sesi) {
-        delete sessionCache[kunci];
+      if (session) {
+        delete sessionCache[key];
         return;
       }
-      delete cache[kunci];
-      void db?.execute("DELETE FROM kv_store WHERE key = $1", [kunci]);
+      delete cache[key];
+      void db?.execute("DELETE FROM kv_store WHERE key = $1", [key]);
       return;
     }
-    PenyimpananLokal.web(sesi)?.removeItem(kunci);
+    LocalStore.webStorage(session)?.removeItem(key);
   }
 
-  private static baca(kunci: string, sesi: boolean): string | null {
+  private static read(key: string, session: boolean): string | null {
     if (backend === "sqlite") {
-      return (sesi ? sessionCache : cache)[kunci] ?? null;
+      return (session ? sessionCache : cache)[key] ?? null;
     }
-    return PenyimpananLokal.web(sesi)?.getItem(kunci) ?? null;
+    return LocalStore.webStorage(session)?.getItem(key) ?? null;
   }
 
-  private static tulis(kunci: string, teks: string, sesi: boolean): void {
+  private static write(key: string, text: string, session: boolean): void {
     if (backend === "sqlite") {
-      if (sesi) {
-        sessionCache[kunci] = teks;
+      if (session) {
+        sessionCache[key] = text;
         return;
       }
-      cache[kunci] = teks;
+      cache[key] = text;
       void db?.execute(
         "INSERT INTO kv_store (key, value, updated_at) VALUES ($1, $2, $3) " +
           "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-        [kunci, teks, new Date().toISOString()],
+        [key, text, new Date().toISOString()],
       );
       return;
     }
     try {
-      PenyimpananLokal.web(sesi)?.setItem(kunci, teks);
+      LocalStore.webStorage(session)?.setItem(key, text);
     } catch {
       // kuota penuh / mode privat — abaikan agar aplikasi tetap berjalan
     }
   }
 
-  private static web(sesi: boolean): Storage | null {
+  private static webStorage(session: boolean): Storage | null {
     try {
       if (typeof window === "undefined") return null;
-      return sesi ? window.sessionStorage : window.localStorage;
+      return session ? window.sessionStorage : window.localStorage;
     } catch {
       return null;
     }

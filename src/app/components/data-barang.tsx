@@ -46,16 +46,16 @@ import {
   SheetDescription,
 } from "./ui/sheet";
 import { cn } from "./ui/utils";
-import type { Barang, KategoriBarang, StatusStok } from "../../domain/entities/Barang";
+import type { Product, ProductCategory, StockStatus } from "../../domain/entities/Product";
 import {
-  BarangController,
-  type ErrorForm,
-  type FormBarang,
-} from "../../domain/controllers/BarangController";
+  ProductController,
+  type ProductFormErrors,
+  type ProductForm,
+} from "../../domain/controllers/ProductController";
 import { useController } from "../hooks/use-controller";
 
 // ---------- metadata tampilan ----------
-const CATEGORY_META: Record<KategoriBarang, { label: string; icon: LucideIcon; tint: string }> = {
+const CATEGORY_META: Record<ProductCategory, { label: string; icon: LucideIcon; tint: string }> = {
   laptop: { label: "Laptop", icon: Laptop, tint: "bg-primary-100 text-primary-700" },
   pc: { label: "PC & Komponen", icon: Cpu, tint: "bg-primary-100 text-primary-500" },
   aksesoris: { label: "Aksesoris", icon: Cable, tint: "bg-amber-100 text-amber" },
@@ -63,7 +63,7 @@ const CATEGORY_META: Record<KategoriBarang, { label: string; icon: LucideIcon; t
   lainnya: { label: "Lainnya", icon: Package, tint: "bg-muted text-muted-foreground" },
 };
 
-const STOCK_BADGE: Record<StatusStok, string> = {
+const STOCK_BADGE: Record<StockStatus, string> = {
   aman: "bg-success/15 text-success",
   menipis: "bg-amber-100 text-amber",
   habis: "bg-destructive/10 text-destructive",
@@ -74,31 +74,31 @@ const PAGE_SIZE = 8;
 
 /**
  * DataBarang — boundary class katalog barang.
- * Seluruh data & aturan bisnis dipegang BarangController; komponen ini
+ * Seluruh data & aturan bisnis dipegang ProductController; komponen ini
  * hanya menyimpan state tampilan (pencarian, halaman, seleksi, drawer).
  */
 export function DataBarang() {
-  const controller = BarangController.getInstance();
+  const controller = ProductController.getInstance();
   useController(controller);
 
   const [search, setSearch] = useState("");
-  const [catFilter, setCatFilter] = useState<"all" | KategoriBarang>("all");
-  const [stockFilter, setStockFilter] = useState<"all" | StatusStok>("all");
+  const [catFilter, setCatFilter] = useState<"all" | ProductCategory>("all");
+  const [stockFilter, setStockFilter] = useState<"all" | StockStatus>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editing, setEditing] = useState<Barang | null>(null);
+  const [editing, setEditing] = useState<Product | null>(null);
 
-  const filtered = controller.daftarBarang({
-    kataKunci: search,
-    kategori: catFilter,
-    statusStok: stockFilter,
+  const filtered = controller.list({
+    keyword: search,
+    category: catFilter,
+    stockStatus: stockFilter,
   });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const pageIds = pageItems.map((barang) => barang.id);
+  const pageIds = pageItems.map((product) => product.id);
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
 
   function toggleAll() {
@@ -117,19 +117,19 @@ export function DataBarang() {
     });
   }
   function deleteOne(id: string) {
-    controller.hapus(id);
+    controller.remove(id);
     setSelected((prev) => { const n = new Set(prev); n.delete(id); return n; });
   }
   function deleteSelected() {
-    controller.hapusBanyak([...selected]);
+    controller.removeMany([...selected]);
     setSelected(new Set());
   }
-  function bulkUpdateCategory(kategori: KategoriBarang) {
-    controller.ubahKategoriBanyak([...selected], kategori);
+  function bulkUpdateCategory(category: ProductCategory) {
+    controller.setCategoryMany([...selected], category);
     setSelected(new Set());
   }
   function openAdd() { setEditing(null); setDrawerOpen(true); }
-  function openEdit(barang: Barang) { setEditing(barang); setDrawerOpen(true); }
+  function openEdit(product: Product) { setEditing(product); setDrawerOpen(true); }
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5 p-4 sm:p-6">
@@ -182,7 +182,7 @@ export function DataBarang() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-500/40 bg-primary-100 px-4 py-2.5">
           <span className="text-sm text-primary-700">{selected.size} dipilih</span>
           <div className="flex items-center gap-2">
-            <Select onValueChange={(v) => bulkUpdateCategory(v as KategoriBarang)}>
+            <Select onValueChange={(v) => bulkUpdateCategory(v as ProductCategory)}>
               <SelectTrigger className="h-9 w-44 bg-card"><SelectValue placeholder="Ubah Kategori" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="laptop">Laptop</SelectItem>
@@ -226,27 +226,27 @@ export function DataBarang() {
                 <TableCell colSpan={10} className="py-12 text-center text-muted-foreground">Tidak ada barang yang cocok.</TableCell>
               </TableRow>
             ) : (
-              pageItems.map((barang) => {
-                const meta = CATEGORY_META[barang.kategori];
+              pageItems.map((product) => {
+                const meta = CATEGORY_META[product.category];
                 const Icon = meta.icon;
-                const status = barang.statusStok();
+                const status = product.stockStatus();
                 return (
-                  <TableRow key={barang.id} className="h-[52px]" data-state={selected.has(barang.id) ? "selected" : undefined}>
-                    <TableCell><Checkbox checked={selected.has(barang.id)} onCheckedChange={() => toggleOne(barang.id)} aria-label={`Pilih ${barang.nama}`} /></TableCell>
+                  <TableRow key={product.id} className="h-[52px]" data-state={selected.has(product.id) ? "selected" : undefined}>
+                    <TableCell><Checkbox checked={selected.has(product.id)} onCheckedChange={() => toggleOne(product.id)} aria-label={`Pilih ${product.name}`} /></TableCell>
                     <TableCell>
                       <div className={cn("flex size-9 items-center justify-center rounded-lg", meta.tint)}><Icon className="size-4" /></div>
                     </TableCell>
-                    <TableCell className="font-mono text-muted-foreground">{barang.kode}</TableCell>
-                    <TableCell>{barang.nama}</TableCell>
+                    <TableCell className="font-mono text-muted-foreground">{product.code}</TableCell>
+                    <TableCell>{product.name}</TableCell>
                     <TableCell><Badge className={cn("border-0", meta.tint)}>{meta.label}</Badge></TableCell>
-                    <TableCell className="text-right text-muted-foreground">{rupiah(barang.hargaBeli)}</TableCell>
-                    <TableCell className="text-right">{rupiah(barang.hargaJual)}</TableCell>
-                    <TableCell className="text-center"><Badge className={cn("border-0", STOCK_BADGE[status])}>{barang.stok === 0 ? "Habis" : barang.stok}</Badge></TableCell>
-                    <TableCell className="text-muted-foreground">{barang.supplier}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{rupiah(product.purchasePrice)}</TableCell>
+                    <TableCell className="text-right">{rupiah(product.sellPrice)}</TableCell>
+                    <TableCell className="text-center"><Badge className={cn("border-0", STOCK_BADGE[status])}>{product.stock === 0 ? "Habis" : product.stock}</Badge></TableCell>
+                    <TableCell className="text-muted-foreground">{product.supplier}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
-                        <IconBtn icon={Pencil} label="Edit" onClick={() => openEdit(barang)} />
-                        <IconBtn icon={Trash2} label="Hapus" danger onClick={() => deleteOne(barang.id)} />
+                        <IconBtn icon={Pencil} label="Edit" onClick={() => openEdit(product)} />
+                        <IconBtn icon={Trash2} label="Hapus" danger onClick={() => deleteOne(product.id)} />
                       </div>
                     </TableCell>
                   </TableRow>
@@ -292,43 +292,43 @@ function IconBtn({ icon: Icon, label, danger, onClick }: { icon: LucideIcon; lab
 }
 
 // ---------- drawer ----------
-const EMPTY_FORM: FormBarang = { nama: "", kode: "", kategori: "", supplier: "", hargaBeli: "", hargaJual: "", stok: "", stokMinimum: "", spesifikasi: "" };
+const EMPTY_FORM: ProductForm = { name: "", code: "", category: "", supplier: "", purchasePrice: "", sellPrice: "", stock: "", minStock: "", specification: "" };
 
 function ItemDrawer({
   open, onOpenChange, editing,
-}: { open: boolean; onOpenChange: (v: boolean) => void; editing: Barang | null }) {
-  const controller = BarangController.getInstance();
-  const [form, setForm] = useState<FormBarang>(EMPTY_FORM);
-  const [errors, setErrors] = useState<ErrorForm>({});
+}: { open: boolean; onOpenChange: (v: boolean) => void; editing: Product | null }) {
+  const controller = ProductController.getInstance();
+  const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
+  const [errors, setErrors] = useState<ProductFormErrors>({});
   const [lastKey, setLastKey] = useState<string | null>(null);
 
   const key = editing?.id ?? "__new__";
   if (open && lastKey !== key) {
     setForm(editing ? {
-      nama: editing.nama, kode: editing.kode, kategori: editing.kategori, supplier: editing.supplier,
-      hargaBeli: String(editing.hargaBeli), hargaJual: String(editing.hargaJual),
-      stok: String(editing.stok), stokMinimum: String(editing.stokMinimum), spesifikasi: editing.spesifikasi || "",
+      name: editing.name, code: editing.code, category: editing.category, supplier: editing.supplier,
+      purchasePrice: String(editing.purchasePrice), sellPrice: String(editing.sellPrice),
+      stock: String(editing.stock), minStock: String(editing.minStock), specification: editing.specification || "",
     } : EMPTY_FORM);
     setErrors({});
     setLastKey(key);
   }
   if (!open && lastKey !== null) setLastKey(null);
 
-  function set<K extends keyof FormBarang>(k: K, v: string) {
+  function set<K extends keyof ProductForm>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: undefined }));
   }
-  function setPrice(k: "hargaBeli" | "hargaJual", raw: string) { set(k, raw.replace(/\D/g, "")); }
+  function setPrice(k: "purchasePrice" | "sellPrice", raw: string) { set(k, raw.replace(/\D/g, "")); }
   const fmt = (d: string) => (d ? Number(d).toLocaleString("id-ID") : "");
 
   function generateCode() {
-    set("kode", controller.generateKode(form.kategori));
+    set("code", controller.generateCode(form.category));
   }
   function submit() {
     // validasi & penyimpanan sepenuhnya dilakukan controller
-    const hasil = controller.simpan(form, editing?.id);
-    if (!hasil.sukses) {
-      setErrors(hasil.errors);
+    const result = controller.save(form, editing?.id);
+    if (!result.success) {
+      setErrors(result.errors);
       return;
     }
     onOpenChange(false);
@@ -350,13 +350,13 @@ function ItemDrawer({
             <span className="text-xs">PNG, JPG hingga 2MB</span>
           </button>
 
-          <Field label="Nama Barang" error={errors.nama}>
-            <Input value={form.nama} onChange={(e) => set("nama", e.target.value)} placeholder="Contoh: Laptop ASUS Vivobook 14" aria-invalid={!!errors.nama} className={cn(errors.nama && "border-destructive")} />
+          <Field label="Nama Barang" error={errors.name}>
+            <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Contoh: Laptop ASUS Vivobook 14" aria-invalid={!!errors.name} className={cn(errors.name && "border-destructive")} />
           </Field>
 
-          <Field label="Kode Barang / SKU" error={errors.kode}>
+          <Field label="Kode Barang / SKU" error={errors.code}>
             <div className="flex gap-2">
-              <Input value={form.kode} onChange={(e) => set("kode", e.target.value)} placeholder="LP-001" aria-invalid={!!errors.kode} className={cn("font-mono", errors.kode && "border-destructive")} />
+              <Input value={form.code} onChange={(e) => set("code", e.target.value)} placeholder="LP-001" aria-invalid={!!errors.code} className={cn("font-mono", errors.code && "border-destructive")} />
               <Button type="button" variant="outline" onClick={generateCode} className="shrink-0">
                 <Wand2 className="size-4" />
                 Generate
@@ -364,9 +364,9 @@ function ItemDrawer({
             </div>
           </Field>
 
-          <Field label="Kategori" error={errors.kategori}>
-            <Select value={form.kategori} onValueChange={(v) => set("kategori", v)}>
-              <SelectTrigger aria-invalid={!!errors.kategori} className={cn("w-full", errors.kategori && "border-destructive")}>
+          <Field label="Kategori" error={errors.category}>
+            <Select value={form.category} onValueChange={(v) => set("category", v)}>
+              <SelectTrigger aria-invalid={!!errors.category} className={cn("w-full", errors.category && "border-destructive")}>
                 <SelectValue placeholder="Pilih kategori" />
               </SelectTrigger>
               <SelectContent>
@@ -387,31 +387,31 @@ function ItemDrawer({
                 <SelectValue placeholder="Cari & pilih supplier" />
               </SelectTrigger>
               <SelectContent>
-                {controller.daftarNamaSupplier().map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                {controller.supplierNames().map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Harga Beli" error={errors.hargaBeli}>
-              <PriceInput value={fmt(form.hargaBeli)} onChange={(v) => setPrice("hargaBeli", v)} invalid={!!errors.hargaBeli} />
+            <Field label="Harga Beli" error={errors.purchasePrice}>
+              <PriceInput value={fmt(form.purchasePrice)} onChange={(v) => setPrice("purchasePrice", v)} invalid={!!errors.purchasePrice} />
             </Field>
-            <Field label="Harga Jual" error={errors.hargaJual}>
-              <PriceInput value={fmt(form.hargaJual)} onChange={(v) => setPrice("hargaJual", v)} invalid={!!errors.hargaJual} />
+            <Field label="Harga Jual" error={errors.sellPrice}>
+              <PriceInput value={fmt(form.sellPrice)} onChange={(v) => setPrice("sellPrice", v)} invalid={!!errors.sellPrice} />
             </Field>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Stok Awal" error={errors.stok}>
-              <Input type="number" min={0} value={form.stok} onChange={(e) => set("stok", e.target.value)} placeholder="0" aria-invalid={!!errors.stok} className={cn(errors.stok && "border-destructive")} />
+            <Field label="Stok Awal" error={errors.stock}>
+              <Input type="number" min={0} value={form.stock} onChange={(e) => set("stock", e.target.value)} placeholder="0" aria-invalid={!!errors.stock} className={cn(errors.stock && "border-destructive")} />
             </Field>
-            <Field label="Stok Minimum" error={errors.stokMinimum}>
-              <Input type="number" min={0} value={form.stokMinimum} onChange={(e) => set("stokMinimum", e.target.value)} placeholder="0" aria-invalid={!!errors.stokMinimum} className={cn(errors.stokMinimum && "border-destructive")} />
+            <Field label="Stok Minimum" error={errors.minStock}>
+              <Input type="number" min={0} value={form.minStock} onChange={(e) => set("minStock", e.target.value)} placeholder="0" aria-invalid={!!errors.minStock} className={cn(errors.minStock && "border-destructive")} />
             </Field>
           </div>
 
           <Field label="Spesifikasi">
-            <Textarea value={form.spesifikasi} onChange={(e) => set("spesifikasi", e.target.value)} placeholder="Untuk laptop: CPU / RAM / Storage / GPU" className="min-h-20" />
+            <Textarea value={form.specification} onChange={(e) => set("specification", e.target.value)} placeholder="Untuk laptop: CPU / RAM / Storage / GPU" className="min-h-20" />
           </Field>
         </div>
 

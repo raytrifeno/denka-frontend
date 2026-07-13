@@ -30,7 +30,7 @@ import {
 } from "./ui/popover";
 import { ROLE_LABEL, type Role } from "../navigation";
 import { AuthController } from "../../domain/controllers/AuthController";
-import { LaporanController } from "../../domain/controllers/LaporanController";
+import { ReportController } from "../../domain/controllers/ReportController";
 import { useController } from "../hooks/use-controller";
 import { SyncIndicator } from "./sync-indicator";
 
@@ -44,19 +44,19 @@ type TopbarProps = {
 
 /**
  * Topbar — boundary class. Identitas pengguna dari AuthController,
- * notifikasi (stok menipis & service) dari LaporanController.
+ * notifications (stok menipis & service) dari ReportController.
  */
 export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onLogout }: TopbarProps) {
   const auth = AuthController.getInstance();
-  const laporan = LaporanController.getInstance();
+  const report = ReportController.getInstance();
   useController(auth);
-  useController(laporan);
+  useController(report);
 
-  const pengguna = auth.penggunaAktif;
-  const notifikasi = laporan.notifikasi();
+  const user = auth.currentUser;
+  const notifications = report.notifications();
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
+    <header className="pt-safe flex min-h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
       {/* Mobile: buka drawer menu */}
       <Button
         variant="ghost"
@@ -103,9 +103,9 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onL
               aria-label="Notifikasi"
             >
               <Bell className="size-5" />
-              {notifikasi.length > 0 && (
+              {notifications.length > 0 && (
                 <span className="absolute right-1.5 top-1.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground">
-                  {notifikasi.length}
+                  {notifications.length}
                 </span>
               )}
             </Button>
@@ -113,16 +113,16 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onL
           <PopoverContent align="end" className="w-80 p-0">
             <div className="flex items-center justify-between px-4 py-3">
               <p>Notifikasi</p>
-              <Badge variant="secondary">{notifikasi.length} baru</Badge>
+              <Badge variant="secondary">{notifications.length} baru</Badge>
             </div>
             <Separator />
             <div className="max-h-80 overflow-y-auto">
-              {notifikasi.length === 0 ? (
+              {notifications.length === 0 ? (
                 <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  Tidak ada notifikasi.
+                  Tidak ada notifications.
                 </p>
               ) : (
-                notifikasi.map((n) => (
+                notifications.map((n) => (
                   <button
                     key={n.id}
                     type="button"
@@ -131,12 +131,12 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onL
                     <span
                       className={
                         "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg " +
-                        (n.tipe === "stok"
+                        (n.type === "stok"
                           ? "bg-warning/15 text-warning"
                           : "bg-info/15 text-info")
                       }
                     >
-                      {n.tipe === "stok" ? (
+                      {n.type === "stok" ? (
                         <Package2 className="size-4" />
                       ) : (
                         <Wrench className="size-4" />
@@ -144,7 +144,7 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onL
                     </span>
                     <span className="min-w-0">
                       <span className="block truncate text-sm">
-                        {n.tipe === "stok" ? "Stok menipis: " + n.judul : n.judul}
+                        {n.type === "stok" ? "Stok menipis: " + n.title : n.title}
                       </span>
                       <span className="block text-xs text-muted-foreground">
                         {n.detail}
@@ -159,7 +159,7 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onL
               type="button"
               className="w-full px-4 py-2.5 text-center text-sm text-primary transition-colors hover:bg-accent"
             >
-              Lihat semua notifikasi
+              Lihat semua notifications
             </button>
           </PopoverContent>
         </Popover>
@@ -175,11 +175,11 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onL
             >
               <Avatar className="size-9">
                 <AvatarFallback className="bg-primary text-primary-foreground">
-                  {pengguna?.inisial() ?? "?"}
+                  {user?.initials() ?? "?"}
                 </AvatarFallback>
               </Avatar>
               <span className="hidden text-left leading-tight md:block">
-                <span className="block text-sm">{pengguna?.nama ?? "-"}</span>
+                <span className="block text-sm">{user?.name ?? "-"}</span>
                 <span className="block text-xs text-muted-foreground">
                   {ROLE_LABEL[role]}
                 </span>
@@ -190,9 +190,9 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onL
           <DropdownMenuContent align="end" className="w-60">
             <DropdownMenuLabel>
               <div className="leading-tight">
-                <p className="text-sm">{pengguna?.nama ?? "-"}</p>
+                <p className="text-sm">{user?.name ?? "-"}</p>
                 <p className="text-xs text-muted-foreground">
-                  {pengguna?.email ?? "-"}
+                  {user?.email ?? "-"}
                 </p>
               </div>
             </DropdownMenuLabel>

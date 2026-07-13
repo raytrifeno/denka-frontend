@@ -40,15 +40,15 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { cn } from "./ui/utils";
-import type { Pengguna, RolePengguna } from "../../domain/entities/Pengguna";
+import type { User, UserRole } from "../../domain/entities/User";
 import {
-  PenggunaController,
-  type ErrorPengguna,
-  type FormPengguna,
-} from "../../domain/controllers/PenggunaController";
+  UserController,
+  type UserErrors,
+  type UserForm,
+} from "../../domain/controllers/UserController";
 import { useController } from "../hooks/use-controller";
 
-const ROLE_BADGE: Record<RolePengguna, { label: string; className: string }> = {
+const ROLE_BADGE: Record<UserRole, { label: string; className: string }> = {
   pemilik: { label: "Pemilik", className: "bg-[#7c3aed]/15 text-[#7c3aed]" },
   admin: { label: "Admin", className: "bg-info/15 text-info" },
 };
@@ -59,19 +59,19 @@ const fmtLogin = (d: Date | null) =>
 /**
  * ManajemenPengguna — boundary class akun pengguna (khusus Pemilik).
  * Aturan bisnis (tidak boleh menghapus akun sendiri, username unik, dsb.)
- * ditegakkan PenggunaController.
+ * ditegakkan UserController.
  */
 export function ManajemenPengguna() {
-  const controller = PenggunaController.getInstance();
+  const controller = UserController.getInstance();
   useController(controller);
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Pengguna | null>(null);
+  const [editing, setEditing] = useState<User | null>(null);
 
-  const users = controller.daftar();
+  const users = controller.list();
 
   function openAdd() { setEditing(null); setDialogOpen(true); }
-  function openEdit(u: Pengguna) { setEditing(u); setDialogOpen(true); }
+  function openEdit(u: User) { setEditing(u); setDialogOpen(true); }
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5 p-4 sm:p-6">
@@ -105,19 +105,19 @@ export function ManajemenPengguna() {
           </TableHeader>
           <TableBody>
             {users.map((u) => {
-              const isSelf = controller.adalahPenggunaAktif(u.id);
+              const isSelf = controller.isCurrentUser(u.id);
               const meta = ROLE_BADGE[u.role];
               return (
                 <TableRow key={u.id}>
                   <TableCell>
                     <Avatar className="size-9">
                       <AvatarFallback className="bg-primary text-xs text-primary-foreground">
-                        {u.inisial()}
+                        {u.initials()}
                       </AvatarFallback>
                     </Avatar>
                   </TableCell>
                   <TableCell>
-                    {u.nama}
+                    {u.name}
                     {isSelf && <span className="ml-2 text-xs text-muted-foreground">(Anda)</span>}
                   </TableCell>
                   <TableCell>
@@ -130,17 +130,17 @@ export function ManajemenPengguna() {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Switch
-                        checked={u.aktif}
+                        checked={u.active}
                         disabled={isSelf}
-                        onCheckedChange={() => controller.toggleAktif(u.id)}
-                        aria-label={`Status ${u.nama}`}
+                        onCheckedChange={() => controller.toggleActive(u.id)}
+                        aria-label={`Status ${u.name}`}
                       />
-                      <span className={cn("text-sm", u.aktif ? "text-success" : "text-muted-foreground")}>
-                        {u.aktif ? "Aktif" : "Nonaktif"}
+                      <span className={cn("text-sm", u.active ? "text-success" : "text-muted-foreground")}>
+                        {u.active ? "Aktif" : "Nonaktif"}
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{fmtLogin(u.terakhirLogin)}</TableCell>
+                  <TableCell className="text-muted-foreground">{fmtLogin(u.lastLogin)}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       <IconButton icon={Pencil} label="Edit" onClick={() => openEdit(u)} />
@@ -149,7 +149,7 @@ export function ManajemenPengguna() {
                         label={isSelf ? "Tidak dapat menghapus akun sendiri" : "Hapus"}
                         danger
                         disabled={isSelf}
-                        onClick={() => controller.hapus(u.id)}
+                        onClick={() => controller.remove(u.id)}
                       />
                     </div>
                   </TableCell>
@@ -190,8 +190,8 @@ function IconButton({
 }
 
 // ---------- dialog ----------
-const EMPTY: FormPengguna = {
-  nama: "", username: "", email: "", password: "", role: "admin", aktif: true,
+const EMPTY: UserForm = {
+  name: "", username: "", email: "", password: "", role: "admin", active: true,
 };
 
 const initialsOf = (name: string) =>
@@ -202,11 +202,11 @@ function UserDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  editing: Pengguna | null;
+  editing: User | null;
 }) {
-  const controller = PenggunaController.getInstance();
-  const [form, setForm] = useState<FormPengguna>(EMPTY);
-  const [errors, setErrors] = useState<ErrorPengguna>({});
+  const controller = UserController.getInstance();
+  const [form, setForm] = useState<UserForm>(EMPTY);
+  const [errors, setErrors] = useState<UserErrors>({});
   const [showPass, setShowPass] = useState(false);
   const [lastId, setLastId] = useState<string | null>(null);
 
@@ -214,7 +214,7 @@ function UserDialog({
   if (open && lastId !== currentId) {
     setForm(
       editing
-        ? { nama: editing.nama, username: editing.username, email: editing.email, password: "", role: editing.role, aktif: editing.aktif }
+        ? { name: editing.name, username: editing.username, email: editing.email, password: "", role: editing.role, active: editing.active }
         : EMPTY,
     );
     setErrors({});
@@ -223,15 +223,15 @@ function UserDialog({
   }
   if (!open && lastId !== null) setLastId(null);
 
-  function set<K extends keyof FormPengguna>(k: K, v: FormPengguna[K]) {
+  function set<K extends keyof UserForm>(k: K, v: UserForm[K]) {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: "" }));
   }
 
   function submit() {
-    const hasil = controller.simpan(form, editing?.id);
-    if (!hasil.sukses) {
-      setErrors(hasil.errors);
+    const result = controller.save(form, editing?.id);
+    if (!result.success) {
+      setErrors(result.errors);
       return;
     }
     onOpenChange(false);
@@ -252,7 +252,7 @@ function UserDialog({
           <div className="flex items-center gap-4">
             <Avatar className="size-16">
               <AvatarFallback className="bg-primary text-primary-foreground">
-                {form.nama ? initialsOf(form.nama) : "?"}
+                {form.name ? initialsOf(form.name) : "?"}
               </AvatarFallback>
             </Avatar>
             <button
@@ -264,10 +264,10 @@ function UserDialog({
             </button>
           </div>
 
-          <Field label="Nama Lengkap" error={errors.nama}>
-            <Input value={form.nama} onChange={(e) => set("nama", e.target.value)}
-              aria-invalid={!!errors.nama}
-              className={cn("bg-input-background", errors.nama && "border-destructive")} />
+          <Field label="Nama Lengkap" error={errors.name}>
+            <Input value={form.name} onChange={(e) => set("name", e.target.value)}
+              aria-invalid={!!errors.name}
+              className={cn("bg-input-background", errors.name && "border-destructive")} />
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -310,7 +310,7 @@ function UserDialog({
           </Field>
 
           <Field label="Role">
-            <Select value={form.role} onValueChange={(v) => set("role", v as RolePengguna)}>
+            <Select value={form.role} onValueChange={(v) => set("role", v as UserRole)}>
               <SelectTrigger className="w-full bg-input-background"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="pemilik">Pemilik</SelectItem>
@@ -326,7 +326,7 @@ function UserDialog({
                 Pengguna nonaktif tidak dapat masuk ke sistem.
               </p>
             </div>
-            <Switch checked={form.aktif} onCheckedChange={(v) => set("aktif", v)} />
+            <Switch checked={form.active} onCheckedChange={(v) => set("active", v)} />
           </div>
         </div>
 

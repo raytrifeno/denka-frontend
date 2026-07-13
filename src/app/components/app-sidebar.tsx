@@ -54,7 +54,7 @@ export function AppSidebar({
         {/* Brand */}
         <div
           className={cn(
-            "flex h-16 items-center gap-3 border-b border-sidebar-border px-4",
+            "pt-safe flex min-h-16 items-center gap-3 border-b border-sidebar-border px-4",
             collapsed && "lg:justify-center lg:px-0",
           )}
         >
@@ -111,7 +111,7 @@ export function AppSidebar({
         </ScrollArea>
 
         {/* Status + collapse */}
-        <div className="border-t border-sidebar-border p-3">
+        <div className="pb-safe border-t border-sidebar-border p-3">
           <div
             className={cn(
               "mb-2 flex items-center gap-2 px-3 text-[11px] text-sidebar-foreground/50",

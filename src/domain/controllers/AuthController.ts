@@ -1,34 +1,34 @@
 import { Observable } from "../core/Observable";
 import { Database } from "../Database";
-import { PenyimpananLokal } from "../persistence/PenyimpananLokal";
-import type { Pengguna, RolePengguna } from "../entities/Pengguna";
+import { LocalStore } from "../persistence/LocalStore";
+import type { User, UserRole } from "../entities/User";
 
-export interface HasilLogin {
-  sukses: boolean;
-  pesan?: string;
+export interface LoginResult {
+  success: boolean;
+  message?: string;
 }
 
-const KUNCI_SESI = "denka-sesi";
+const KEY_SESSION = "denka-session";
 
 /**
- * AuthController — controller class untuk autentikasi & sesi pengguna.
- * Boundary (Login, Topbar, App) tidak pernah menyentuh entity Pengguna
- * secara langsung; semua lewat controller ini.
+ * AuthController — authentication & user session.
+ * Boundaries (Login, Topbar, App) never touch the User entity directly;
+ * everything goes through this controller.
  *
- * Sesi disimpan di localStorage ("Ingat saya") atau sessionStorage,
- * sehingga pengguna tetap masuk setelah halaman dimuat ulang.
+ * The session is stored in localStorage ("remember me") or sessionStorage,
+ * so the user stays signed in after a reload.
  */
 export class AuthController extends Observable {
   private static instance: AuthController | null = null;
 
   private db = Database.getInstance();
-  private _penggunaAktif: Pengguna | null = null;
-  /** Fitur demo "lihat sebagai role" pada topbar. */
-  private _rolePratinjau: RolePengguna | null = null;
+  private _currentUser: User | null = null;
+  /** Demo "view as role" feature in the topbar. */
+  private _previewRole: UserRole | null = null;
 
   private constructor() {
     super();
-    this.pulihkanSesi();
+    this.restoreSession();
   }
 
   static getInstance(): AuthController {
@@ -38,82 +38,82 @@ export class AuthController extends Observable {
     return AuthController.instance;
   }
 
-  /** Pulihkan sesi tersimpan saat aplikasi dibuka kembali. */
-  private pulihkanSesi(): void {
-    const sesi =
-      PenyimpananLokal.muat<{ userId: string }>(KUNCI_SESI) ??
-      PenyimpananLokal.muat<{ userId: string }>(KUNCI_SESI, true);
-    if (!sesi) return;
-    const pengguna = this.db.pengguna.findById(sesi.userId);
-    if (pengguna && pengguna.aktif) {
-      this._penggunaAktif = pengguna;
+  /** Restore a stored session when the app reopens. */
+  private restoreSession(): void {
+    const session =
+      LocalStore.load<{ userId: string }>(KEY_SESSION) ??
+      LocalStore.load<{ userId: string }>(KEY_SESSION, true);
+    if (!session) return;
+    const user = this.db.users.findById(session.userId);
+    if (user && user.active) {
+      this._currentUser = user;
     } else {
-      this.hapusSesiTersimpan();
+      this.clearStoredSession();
     }
   }
 
-  private hapusSesiTersimpan(): void {
-    PenyimpananLokal.hapus(KUNCI_SESI);
-    PenyimpananLokal.hapus(KUNCI_SESI, true);
+  private clearStoredSession(): void {
+    LocalStore.remove(KEY_SESSION);
+    LocalStore.remove(KEY_SESSION, true);
   }
 
-  login(identitas: string, password: string, ingatSaya = true): HasilLogin {
-    const pengguna = this.db.pengguna.findByIdentitas(identitas);
-    if (!pengguna || !pengguna.cekPassword(password)) {
-      return { sukses: false, pesan: "Username atau password salah." };
+  login(identity: string, password: string, rememberMe = true): LoginResult {
+    const user = this.db.users.findByIdentity(identity);
+    if (!user || !user.checkPassword(password)) {
+      return { success: false, message: "Username atau password salah." };
     }
-    if (!pengguna.aktif) {
-      return { sukses: false, pesan: "Akun Anda dinonaktifkan. Hubungi pemilik toko." };
+    if (!user.active) {
+      return { success: false, message: "Akun Anda dinonaktifkan. Hubungi pemilik toko." };
     }
-    pengguna.catatLogin();
-    this.db.pengguna.touch();
-    this._penggunaAktif = pengguna;
-    this._rolePratinjau = null;
-    this.hapusSesiTersimpan();
-    PenyimpananLokal.simpan(KUNCI_SESI, { userId: pengguna.id }, !ingatSaya);
+    user.recordLogin();
+    this.db.users.touch();
+    this._currentUser = user;
+    this._previewRole = null;
+    this.clearStoredSession();
+    LocalStore.save(KEY_SESSION, { userId: user.id }, !rememberMe);
     this.notify();
-    return { sukses: true };
+    return { success: true };
   }
 
   logout(): void {
-    this._penggunaAktif = null;
-    this._rolePratinjau = null;
-    this.hapusSesiTersimpan();
+    this._currentUser = null;
+    this._previewRole = null;
+    this.clearStoredSession();
     this.notify();
   }
 
   /**
-   * Sinkronkan sesi setelah data berubah besar-besaran (mis. reset data demo):
-   * instance entity lama diganti dengan yang baru dari repository.
+   * Sync the session after a bulk data change (e.g. demo data reset):
+   * the old entity instance is replaced with the fresh one from the repository.
    */
-  sinkronSesi(): void {
-    if (!this._penggunaAktif) return;
-    const segar = this.db.pengguna.findById(this._penggunaAktif.id);
-    this._penggunaAktif = segar && segar.aktif ? segar : null;
-    if (!this._penggunaAktif) this.hapusSesiTersimpan();
+  syncSession(): void {
+    if (!this._currentUser) return;
+    const fresh = this.db.users.findById(this._currentUser.id);
+    this._currentUser = fresh && fresh.active ? fresh : null;
+    if (!this._currentUser) this.clearStoredSession();
     this.notify();
   }
 
-  get sudahLogin(): boolean {
-    return this._penggunaAktif !== null;
+  get isLoggedIn(): boolean {
+    return this._currentUser !== null;
   }
 
-  get penggunaAktif(): Pengguna | null {
-    return this._penggunaAktif;
+  get currentUser(): User | null {
+    return this._currentUser;
   }
 
-  /** Nama pengguna aktif — dipakai untuk kolom "dicatat oleh"/kasir. */
-  get namaPenggunaAktif(): string {
-    return this._penggunaAktif?.nama ?? "-";
+  /** Active user's name — used for "recorded by"/cashier columns. */
+  get currentUserName(): string {
+    return this._currentUser?.name ?? "-";
   }
 
-  /** Role efektif yang dipakai UI (mempertimbangkan mode pratinjau). */
-  get role(): RolePengguna {
-    return this._rolePratinjau ?? this._penggunaAktif?.role ?? "admin";
+  /** Effective role used by the UI (accounts for preview mode). */
+  get role(): UserRole {
+    return this._previewRole ?? this._currentUser?.role ?? "admin";
   }
 
-  gantiRolePratinjau(role: RolePengguna): void {
-    this._rolePratinjau = role;
+  setPreviewRole(role: UserRole): void {
+    this._previewRole = role;
     this.notify();
   }
 }

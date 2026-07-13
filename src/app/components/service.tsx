@@ -49,23 +49,23 @@ import {
 import { cn } from "./ui/utils";
 import {
   ServiceOrder,
-  URUTAN_STATUS,
-  type PrioritasService,
-  type StatusService,
+  STATUS_ORDER,
+  type ServicePriority,
+  type ServiceStatus,
 } from "../../domain/entities/ServiceOrder";
 import {
-  DAFTAR_TEKNISI,
-  PILIHAN_KELENGKAPAN,
+  TECHNICIANS,
+  ACCESSORY_OPTIONS,
   ServiceController,
-  type ErrorService,
-  type FormServiceBaru,
+  type ServiceErrors,
+  type NewServiceForm,
 } from "../../domain/controllers/ServiceController";
-import { PengaturanController } from "../../domain/controllers/PengaturanController";
+import { SettingsController } from "../../domain/controllers/SettingsController";
 import { useController } from "../hooks/use-controller";
 import { printHTML } from "../share";
 
 // ---------- metadata tampilan ----------
-const STATUS_META: Record<StatusService, { label: string; color: string }> = {
+const STATUS_META: Record<ServiceStatus, { label: string; color: string }> = {
   antri: { label: "Antri", color: "#94A3B8" },
   diperiksa: { label: "Diperiksa", color: "#2F5C8F" },
   dikerjakan: { label: "Dikerjakan", color: "#F59E0B" },
@@ -88,14 +88,14 @@ export function Service() {
   const controller = ServiceController.getInstance();
   useController(controller);
 
-  const [filter, setFilter] = useState<"all" | StatusService>("all");
+  const [filter, setFilter] = useState<"all" | ServiceStatus>("all");
   const [search, setSearch] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
-  const counts = controller.hitungPerStatus();
-  const visible = controller.daftar(search, filter);
-  const detail = detailId ? controller.cariById(detailId) ?? null : null;
+  const counts = controller.countByStatus();
+  const visible = controller.list(search, filter);
+  const detail = detailId ? controller.findById(detailId) ?? null : null;
 
   return (
     <div className="flex h-full flex-col gap-4 p-4 sm:p-6">
@@ -122,7 +122,7 @@ export function Service() {
       {/* filter chips */}
       <div className="flex flex-wrap gap-2">
         <FilterChip label="Semua" count={counts.all} active={filter === "all"} onClick={() => setFilter("all")} />
-        {URUTAN_STATUS.map((s) => (
+        {STATUS_ORDER.map((s) => (
           <FilterChip key={s} label={STATUS_META[s].label} count={counts[s]} active={filter === s} onClick={() => setFilter(s)} color={STATUS_META[s].color} />
         ))}
       </div>
@@ -151,11 +151,11 @@ export function Service() {
             ) : (
               visible.map((s) => (
                 <TableRow key={s.id} className="cursor-pointer" onClick={() => setDetailId(s.id)}>
-                  <TableCell className="pl-4 font-mono text-sm font-semibold text-primary-700">{s.nomor}</TableCell>
+                  <TableCell className="pl-4 font-mono text-sm font-semibold text-primary-700">{s.number}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{s.pelanggan}</span>
-                      {s.prioritas === "urgent" && (
+                      <span className="font-medium">{s.customer}</span>
+                      {s.priority === "urgent" && (
                         <Badge className="border-0 bg-destructive/10 text-destructive">
                           <AlertTriangle className="size-3" />
                           Urgent
@@ -163,9 +163,9 @@ export function Service() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{s.jenisUnit} · {s.merk}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.unitType} · {s.brand}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Select value={s.status} onValueChange={(v) => controller.ubahStatus(s.id, v as StatusService)}>
+                    <Select value={s.status} onValueChange={(v) => controller.changeStatus(s.id, v as ServiceStatus)}>
                       <SelectTrigger className="h-8 w-full bg-card">
                         <span className="flex items-center gap-2">
                           <span className="size-2 rounded-full" style={{ backgroundColor: STATUS_META[s.status].color }} />
@@ -173,15 +173,15 @@ export function Service() {
                         </span>
                       </SelectTrigger>
                       <SelectContent>
-                        {URUTAN_STATUS.map((st) => (
+                        {STATUS_ORDER.map((st) => (
                           <SelectItem key={st} value={st}>{STATUS_META[st].label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{s.teknisi}</TableCell>
-                  <TableCell className="text-muted-foreground">{fmtDate(s.tanggalMasuk)}</TableCell>
-                  <TableCell className="pr-4 text-right tnum">{rupiah(s.totalBiaya())}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.technician}</TableCell>
+                  <TableCell className="text-muted-foreground">{fmtDate(s.receivedAt)}</TableCell>
+                  <TableCell className="pr-4 text-right tnum">{rupiah(s.totalCost())}</TableCell>
                 </TableRow>
               ))
             )}
@@ -220,29 +220,29 @@ function FilterChip({
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
 
 function invoiceHTML(service: ServiceOrder): string {
-  const toko = PengaturanController.getInstance().toko;
-  const parts = service.sparepart
-    .map((p) => `<div class="row"><span>${p.jumlah}× ${esc(p.nama)}</span><span>${rupiah(p.subtotal())}</span></div>`)
+  const store = SettingsController.getInstance().store;
+  const parts = service.parts
+    .map((p) => `<div class="row"><span>${p.quantity}× ${esc(p.name)}</span><span>${rupiah(p.subtotal())}</span></div>`)
     .join("");
   return `
-    <h1>${esc(toko.nama)}</h1>
-    <p class="center muted">${esc(toko.alamat)}<br>${esc(toko.telepon)}</p>
+    <h1>${esc(store.name)}</h1>
+    <p class="center muted">${esc(store.address)}<br>${esc(store.phone)}</p>
     <hr>
-    <div class="row"><span class="muted">Invoice</span><span>${esc(service.nomor)}</span></div>
-    <div class="row"><span class="muted">Tanggal</span><span>${fmtDate(service.tanggalMasuk)}</span></div>
-    <div class="row"><span class="muted">Pelanggan</span><span>${esc(service.pelanggan)}</span></div>
-    <div class="row"><span class="muted">Unit</span><span>${esc(service.jenisUnit)} ${esc(service.merk)}</span></div>
+    <div class="row"><span class="muted">Invoice</span><span>${esc(service.number)}</span></div>
+    <div class="row"><span class="muted">Tanggal</span><span>${fmtDate(service.receivedAt)}</span></div>
+    <div class="row"><span class="muted">Pelanggan</span><span>${esc(service.customer)}</span></div>
+    <div class="row"><span class="muted">Unit</span><span>${esc(service.unitType)} ${esc(service.brand)}</span></div>
     <hr>
     <div class="row"><span class="muted">Keluhan</span></div>
-    <p>${esc(service.keluhan)}</p>
-    ${service.diagnosa ? `<div class="row"><span class="muted">Diagnosa</span></div><p>${esc(service.diagnosa)}</p>` : ""}
+    <p>${esc(service.complaint)}</p>
+    ${service.diagnosis ? `<div class="row"><span class="muted">Diagnosa</span></div><p>${esc(service.diagnosis)}</p>` : ""}
     <hr>
     ${parts || `<p class="muted">Tanpa sparepart</p>`}
-    <div class="row"><span class="muted">Biaya Jasa</span><span>${rupiah(service.biayaJasa)}</span></div>
+    <div class="row"><span class="muted">Biaya Jasa</span><span>${rupiah(service.serviceFee)}</span></div>
     <hr>
-    <div class="row total"><span>TOTAL</span><span>${rupiah(service.totalBiaya())}</span></div>
+    <div class="row total"><span>TOTAL</span><span>${rupiah(service.totalCost())}</span></div>
     <hr>
-    <p class="center muted">Terima kasih — ${esc(toko.nama)}</p>`;
+    <p class="center muted">Terima kasih — ${esc(store.name)}</p>`;
 }
 
 // ---------- detail drawer ----------
@@ -266,9 +266,9 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
 
   function addPart() {
     if (!partId) return;
-    const hasil = controller.tambahSparepart(service.id, partId, Math.max(1, Number(partQty) || 1));
-    if (!hasil.sukses) {
-      setPartError(hasil.pesan ?? "Gagal menambah sparepart.");
+    const result = controller.addPart(service.id, partId, Math.max(1, Number(partQty) || 1));
+    if (!result.success) {
+      setPartError(result.message ?? "Gagal menambah sparepart.");
       return;
     }
     setPartError(null);
@@ -276,19 +276,19 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
     setPartQty("1");
   }
 
-  const total = service.totalBiaya();
+  const total = service.totalCost();
 
   return (
     <>
       {/* header */}
       <SheetHeader className="space-y-0 border-b border-border p-5 pr-12">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <SheetTitle className="font-mono text-primary-700">{service.nomor}</SheetTitle>
+          <SheetTitle className="font-mono text-primary-700">{service.number}</SheetTitle>
           <div className="flex items-center gap-2">
-            <Select value={service.status} onValueChange={(v) => controller.ubahStatus(service.id, v as StatusService)}>
+            <Select value={service.status} onValueChange={(v) => controller.changeStatus(service.id, v as ServiceStatus)}>
               <SelectTrigger className="w-40 bg-card"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {URUTAN_STATUS.map((s) => (
+                {STATUS_ORDER.map((s) => (
                   <SelectItem key={s} value={s}>{STATUS_META[s].label}</SelectItem>
                 ))}
               </SelectContent>
@@ -302,30 +302,30 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
 
       <div className="space-y-6 p-5">
         <Section title="Pelanggan">
-          <ReadField label="Nama" value={service.pelanggan} />
-          <ReadField label="No. WhatsApp" value={service.telepon} />
-          <ReadField label="Alamat" value={service.alamat || "-"} />
+          <ReadField label="Nama" value={service.customer} />
+          <ReadField label="No. WhatsApp" value={service.phone} />
+          <ReadField label="Alamat" value={service.address || "-"} />
         </Section>
 
         <Separator />
 
         <Section title="Unit">
           <div className="grid grid-cols-2 gap-3">
-            <ReadField label="Jenis" value={service.jenisUnit} />
-            <ReadField label="Merk" value={service.merk} />
+            <ReadField label="Jenis" value={service.unitType} />
+            <ReadField label="Merk" value={service.brand} />
             <ReadField label="Model" value={service.model || "-"} />
-            <ReadField label="No. Seri" value={service.nomorSeri || "-"} />
+            <ReadField label="No. Seri" value={service.serialNo || "-"} />
           </div>
           <div>
             <p className="mb-2 text-xs text-muted-foreground">Kelengkapan dibawa</p>
             <div className="flex flex-wrap gap-2">
-              {PILIHAN_KELENGKAPAN.map((a) => {
-                const on = service.kelengkapan.includes(a);
+              {ACCESSORY_OPTIONS.map((a) => {
+                const on = service.accessories.includes(a);
                 return (
                   <button
                     key={a}
                     type="button"
-                    onClick={() => controller.toggleKelengkapan(service.id, a)}
+                    onClick={() => controller.toggleAccessory(service.id, a)}
                     className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors", on ? "border-primary-700 bg-primary-100 text-primary-700" : "border-border bg-card text-muted-foreground hover:border-primary-500")}
                   >
                     <Checkbox checked={on} className="pointer-events-none size-3.5" />
@@ -342,18 +342,18 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
         <Section title="Keluhan & Diagnosa">
           <div className="space-y-2">
             <Label>Keluhan Pelanggan</Label>
-            <Textarea value={service.keluhan} onChange={(e) => controller.perbaruiInfo(service.id, { keluhan: e.target.value })} className="min-h-20" />
+            <Textarea value={service.complaint} onChange={(e) => controller.updateInfo(service.id, { complaint: e.target.value })} className="min-h-20" />
           </div>
           <div className="space-y-2">
             <Label>Hasil Diagnosa Teknisi</Label>
-            <Textarea value={service.diagnosa || ""} onChange={(e) => controller.perbaruiInfo(service.id, { diagnosa: e.target.value })} placeholder="Tuliskan hasil pemeriksaan..." className="min-h-20" />
+            <Textarea value={service.diagnosis || ""} onChange={(e) => controller.updateInfo(service.id, { diagnosis: e.target.value })} placeholder="Tuliskan result pemeriksaan..." className="min-h-20" />
           </div>
           <div className="space-y-2">
             <Label>Teknisi Ditugaskan</Label>
-            <Select value={service.teknisi} onValueChange={(v) => controller.perbaruiInfo(service.id, { teknisi: v })}>
+            <Select value={service.technician} onValueChange={(v) => controller.updateInfo(service.id, { technician: v })}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {DAFTAR_TEKNISI.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                {TECHNICIANS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -363,12 +363,12 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
 
         <Section title="Sparepart & Biaya">
           <div className="space-y-2">
-            {service.sparepart.map((p) => (
+            {service.parts.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-                <span className="min-w-0 truncate">{p.nama} <span className="text-muted-foreground">× {p.jumlah}</span></span>
+                <span className="min-w-0 truncate">{p.name} <span className="text-muted-foreground">× {p.quantity}</span></span>
                 <div className="flex items-center gap-3">
                   <span>{rupiah(p.subtotal())}</span>
-                  <button type="button" onClick={() => controller.hapusSparepart(service.id, p.id)} aria-label="Hapus" className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
+                  <button type="button" onClick={() => controller.removePart(service.id, p.id)} aria-label="Hapus" className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
                     <Trash2 className="size-4" />
                   </button>
                 </div>
@@ -379,8 +379,8 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
                 <Select value={partId} onValueChange={(v) => { setPartId(v); setPartError(null); }}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Pilih barang dari inventori" /></SelectTrigger>
                   <SelectContent>
-                    {controller.pilihanSparepart().map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.nama} — {rupiah(p.hargaJual)}</SelectItem>
+                    {controller.partOptions().map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name} — {rupiah(p.sellPrice)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -400,8 +400,8 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rp</span>
               <Input
                 inputMode="numeric"
-                value={service.biayaJasa ? service.biayaJasa.toLocaleString("id-ID") : ""}
-                onChange={(e) => controller.perbaruiInfo(service.id, { biayaJasa: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                value={service.serviceFee ? service.serviceFee.toLocaleString("id-ID") : ""}
+                onChange={(e) => controller.updateInfo(service.id, { serviceFee: Number(e.target.value.replace(/\D/g, "")) || 0 })}
                 placeholder="0"
                 className="pl-9"
               />
@@ -418,11 +418,11 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
 
         <Section title="Riwayat Status">
           <ol className="relative space-y-4 border-l border-border pl-5">
-            {[...service.riwayat].reverse().map((h, i) => (
+            {[...service.history].reverse().map((h, i) => (
               <li key={i} className="relative">
                 <span className="absolute -left-[26px] top-0.5 size-3 rounded-full ring-4 ring-card" style={{ backgroundColor: STATUS_META[h.status].color }} />
                 <p className="text-sm">{STATUS_META[h.status].label}</p>
-                <p className="text-xs text-muted-foreground">{fmtDateTime(h.pada)}</p>
+                <p className="text-xs text-muted-foreground">{fmtDateTime(h.at)}</p>
               </li>
             ))}
           </ol>
@@ -434,15 +434,15 @@ function DrawerBody({ service }: { service: ServiceOrder }) {
         <div className="grid grid-cols-2 gap-2">
           <Button
             className="bg-success text-white hover:bg-success/90"
-            onClick={() => controller.ubahStatus(service.id, "selesai")}
-            disabled={service.sudahSelesai()}
+            onClick={() => controller.changeStatus(service.id, "selesai")}
+            disabled={service.isDone()}
           >
             <CheckCircle2 className="size-4" />
             Tandai Selesai
           </Button>
           <Button
             className="bg-amber font-semibold text-primary-900 hover:bg-amber/90"
-            onClick={() => controller.ubahStatus(service.id, "diambil")}
+            onClick={() => controller.changeStatus(service.id, "diambil")}
             disabled={service.status === "diambil"}
           >
             <Wallet className="size-4" />
@@ -472,26 +472,26 @@ function ReadField({ label, value }: { label: string; value: string }) {
 }
 
 // ---------- add dialog ----------
-const EMPTY_SERVICE: FormServiceBaru = {
-  pelanggan: "", telepon: "", alamat: "", jenisUnit: "", merk: "", model: "",
-  keluhan: "", prioritas: "normal", teknisi: DAFTAR_TEKNISI[0],
+const EMPTY_SERVICE: NewServiceForm = {
+  customer: "", phone: "", address: "", unitType: "", brand: "", model: "",
+  complaint: "", priority: "normal", technician: TECHNICIANS[0],
 };
 
 function AddServiceDialog({
   open, onOpenChange,
 }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const controller = ServiceController.getInstance();
-  const [form, setForm] = useState<FormServiceBaru>(EMPTY_SERVICE);
-  const [errors, setErrors] = useState<ErrorService>({});
+  const [form, setForm] = useState<NewServiceForm>(EMPTY_SERVICE);
+  const [errors, setErrors] = useState<ServiceErrors>({});
 
-  function set<K extends keyof FormServiceBaru>(k: K, v: FormServiceBaru[K]) {
+  function set<K extends keyof NewServiceForm>(k: K, v: NewServiceForm[K]) {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: "" }));
   }
   function submit() {
-    const hasil = controller.buatService(form);
-    if (!hasil.sukses) {
-      setErrors(hasil.errors);
+    const result = controller.createService(form);
+    if (!result.success) {
+      setErrors(result.errors);
       return;
     }
     setForm(EMPTY_SERVICE);
@@ -514,15 +514,15 @@ function AddServiceDialog({
         <div className="space-y-5">
           <div className="space-y-3">
             <h3 className="text-base">Data Pelanggan</h3>
-            <FormField label="Nama Pelanggan" error={errors.pelanggan}>
-              <Input value={form.pelanggan} onChange={(e) => set("pelanggan", e.target.value)} aria-invalid={!!errors.pelanggan} className={cn(errors.pelanggan && "border-destructive")} />
+            <FormField label="Nama Pelanggan" error={errors.customer}>
+              <Input value={form.customer} onChange={(e) => set("customer", e.target.value)} aria-invalid={!!errors.customer} className={cn(errors.customer && "border-destructive")} />
             </FormField>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <FormField label="No. WhatsApp" error={errors.telepon}>
-                <Input value={form.telepon} onChange={(e) => set("telepon", e.target.value)} placeholder="08xxxxxxxxxx" aria-invalid={!!errors.telepon} className={cn(errors.telepon && "border-destructive")} />
+              <FormField label="No. WhatsApp" error={errors.phone}>
+                <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="08xxxxxxxxxx" aria-invalid={!!errors.phone} className={cn(errors.phone && "border-destructive")} />
               </FormField>
               <FormField label="Alamat (opsional)">
-                <Input value={form.alamat} onChange={(e) => set("alamat", e.target.value)} />
+                <Input value={form.address} onChange={(e) => set("address", e.target.value)} />
               </FormField>
             </div>
           </div>
@@ -530,9 +530,9 @@ function AddServiceDialog({
           <div className="space-y-3">
             <h3 className="text-base">Data Unit</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <FormField label="Jenis Unit" error={errors.jenisUnit}>
-                <Select value={form.jenisUnit} onValueChange={(v) => set("jenisUnit", v)}>
-                  <SelectTrigger aria-invalid={!!errors.jenisUnit} className={cn("w-full", errors.jenisUnit && "border-destructive")}>
+              <FormField label="Jenis Unit" error={errors.unitType}>
+                <Select value={form.unitType} onValueChange={(v) => set("unitType", v)}>
+                  <SelectTrigger aria-invalid={!!errors.unitType} className={cn("w-full", errors.unitType && "border-destructive")}>
                     <SelectValue placeholder="Pilih" />
                   </SelectTrigger>
                   <SelectContent>
@@ -543,8 +543,8 @@ function AddServiceDialog({
                   </SelectContent>
                 </Select>
               </FormField>
-              <FormField label="Merk" error={errors.merk}>
-                <Input value={form.merk} onChange={(e) => set("merk", e.target.value)} placeholder="ASUS, HP..." aria-invalid={!!errors.merk} className={cn(errors.merk && "border-destructive")} />
+              <FormField label="Merk" error={errors.brand}>
+                <Input value={form.brand} onChange={(e) => set("brand", e.target.value)} placeholder="ASUS, HP..." aria-invalid={!!errors.brand} className={cn(errors.brand && "border-destructive")} />
               </FormField>
               <FormField label="Model (opsional)">
                 <Input value={form.model} onChange={(e) => set("model", e.target.value)} />
@@ -552,7 +552,7 @@ function AddServiceDialog({
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FormField label="Prioritas">
-                <Select value={form.prioritas} onValueChange={(v) => set("prioritas", v as PrioritasService)}>
+                <Select value={form.priority} onValueChange={(v) => set("priority", v as ServicePriority)}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="normal">Normal</SelectItem>
@@ -561,10 +561,10 @@ function AddServiceDialog({
                 </Select>
               </FormField>
               <FormField label="Teknisi">
-                <Select value={form.teknisi} onValueChange={(v) => set("teknisi", v)}>
+                <Select value={form.technician} onValueChange={(v) => set("technician", v)}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {DAFTAR_TEKNISI.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    {TECHNICIANS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </FormField>
@@ -573,8 +573,8 @@ function AddServiceDialog({
 
           <div className="space-y-3">
             <h3 className="text-base">Keluhan Awal</h3>
-            <FormField label="Keluhan Pelanggan" error={errors.keluhan}>
-              <Textarea value={form.keluhan} onChange={(e) => set("keluhan", e.target.value)} placeholder="Jelaskan keluhan/kerusakan unit..." aria-invalid={!!errors.keluhan} className={cn("min-h-24", errors.keluhan && "border-destructive")} />
+            <FormField label="Keluhan Pelanggan" error={errors.complaint}>
+              <Textarea value={form.complaint} onChange={(e) => set("complaint", e.target.value)} placeholder="Jelaskan keluhan/kerusakan unit..." aria-invalid={!!errors.complaint} className={cn("min-h-24", errors.complaint && "border-destructive")} />
             </FormField>
           </div>
         </div>

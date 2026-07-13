@@ -44,9 +44,9 @@ import {
 } from "./ui/table";
 import { cn } from "./ui/utils";
 import type { Role } from "../navigation";
-import { LABEL_METODE } from "../../domain/entities/TransaksiPenjualan";
-import type { StatusService } from "../../domain/entities/ServiceOrder";
-import { LaporanController } from "../../domain/controllers/LaporanController";
+import { LABEL_PAYMENT_METHOD } from "../../domain/entities/Sale";
+import type { ServiceStatus } from "../../domain/entities/ServiceOrder";
+import { ReportController } from "../../domain/controllers/ReportController";
 import { exportToExcel } from "../../domain/export/ExcelExport";
 import { useController } from "../hooks/use-controller";
 import { toast } from "sonner";
@@ -74,11 +74,11 @@ const ALL_TABS: { id: Tab; label: string; ownerOnly?: boolean }[] = [
 /**
  * Laporan — boundary class halaman laporan.
  * Semua agregasi (penjualan, stok, terlaris, keuntungan, service)
- * dihitung LaporanController dari data transaksi/mutasi/service asli.
+ * dihitung ReportController dari data transaksi/mutasi/service asli.
  */
 export function Laporan({ role }: { role: Role }) {
-  const laporan = LaporanController.getInstance();
-  useController(laporan);
+  const report = ReportController.getInstance();
+  useController(report);
 
   const tabs = ALL_TABS.filter((t) => !t.ownerOnly || role === "pemilik");
   const [tab, setTab] = useState<Tab>("penjualan");
@@ -90,10 +90,10 @@ export function Laporan({ role }: { role: Role }) {
 
   async function exportExcel() {
     setExporting(true);
-    const hasil = await exportToExcel();
+    const result = await exportToExcel();
     setExporting(false);
-    if (hasil.sukses) toast.success(hasil.pesan);
-    else toast.error(hasil.pesan);
+    if (result.success) toast.success(result.message);
+    else toast.error(result.message);
   }
 
   // guard: jika non-pemilik masih memilih tab keuntungan
@@ -235,20 +235,20 @@ const yRupiah = (v: number) => (v >= 1000000 ? `${v / 1000000}jt` : `${v / 1000}
 
 // ---------- sales report ----------
 function SalesReport({ dari, sampai }: RangeProps) {
-  const laporan = LaporanController.getInstance();
-  const data = laporan.laporanPenjualan(dari, sampai);
+  const report = ReportController.getInstance();
+  const data = report.salesReport(dari, sampai);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <SummaryCard icon={Wallet} label="Total Penjualan" value={rupiah(data.total)} tone="primary" />
-        <SummaryCard icon={Receipt} label="Total Transaksi" value={`${data.jumlahTransaksi} transaksi`} tone="info" />
-        <SummaryCard icon={TrendingUp} label="Rata-rata per Transaksi" value={rupiah(data.rataRata)} tone="success" />
+        <SummaryCard icon={Receipt} label="Total Transaksi" value={`${data.saleCount} transaksi`} tone="info" />
+        <SummaryCard icon={TrendingUp} label="Rata-rata per Transaksi" value={rupiah(data.average)} tone="success" />
       </div>
 
       <ChartCard title="Penjualan per Hari">
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.perHari.map((p) => ({ day: p.label, total: p.total }))} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+            <BarChart data={data.perDay.map((p) => ({ day: p.label, total: p.total }))} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="day" tickLine={false} axisLine={false} tick={axisTick} />
               <YAxis tickFormatter={yRupiah} tickLine={false} axisLine={false} width={44} tick={axisTick} />
@@ -272,21 +272,21 @@ function SalesReport({ dari, sampai }: RangeProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.transaksi.length === 0 ? (
+            {data.sales.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                   Tidak ada transaksi pada rentang tanggal ini.
                 </TableCell>
               </TableRow>
             ) : (
-              data.transaksi.map((t) => (
+              data.sales.map((t) => (
                 <TableRow key={t.id}>
-                  <TableCell className="pl-6 text-muted-foreground">{fmtDate(t.tanggal)}</TableCell>
-                  <TableCell>{t.nomor}</TableCell>
-                  <TableCell className="text-muted-foreground">{t.kasir}</TableCell>
-                  <TableCell className="text-center">{t.jumlahItem()}</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">{fmtDate(t.date)}</TableCell>
+                  <TableCell>{t.number}</TableCell>
+                  <TableCell className="text-muted-foreground">{t.cashier}</TableCell>
+                  <TableCell className="text-center">{t.itemCount()}</TableCell>
                   <TableCell className="text-right">{rupiah(t.total())}</TableCell>
-                  <TableCell className="pr-6"><Badge variant="secondary">{LABEL_METODE[t.metode]}</Badge></TableCell>
+                  <TableCell className="pr-6"><Badge variant="secondary">{LABEL_PAYMENT_METHOD[t.method]}</Badge></TableCell>
                 </TableRow>
               ))
             )}
@@ -304,8 +304,8 @@ function stockStatus(end: number, min: number) {
   return { label: "Aman", className: "bg-success/15 text-success" };
 }
 function StockReport({ dari, sampai }: RangeProps) {
-  const laporan = LaporanController.getInstance();
-  const rows = laporan.laporanStok(dari, sampai);
+  const report = ReportController.getInstance();
+  const rows = report.stockReport(dari, sampai);
   return (
     <TableCard title="Mutasi Stok per Barang">
       <Table>
@@ -321,14 +321,14 @@ function StockReport({ dari, sampai }: RangeProps) {
         </TableHeader>
         <TableBody>
           {rows.map((r) => {
-            const st = stockStatus(r.stokAkhir, r.stokMinimum);
+            const st = stockStatus(r.closingStock, r.minStock);
             return (
-              <TableRow key={r.nama}>
-                <TableCell className="pl-6">{r.nama}</TableCell>
-                <TableCell className="text-center text-muted-foreground">{r.stokAwal}</TableCell>
-                <TableCell className="text-center text-success">+{r.masuk}</TableCell>
-                <TableCell className="text-center text-destructive">-{r.keluar}</TableCell>
-                <TableCell className="text-center">{r.stokAkhir}</TableCell>
+              <TableRow key={r.name}>
+                <TableCell className="pl-6">{r.name}</TableCell>
+                <TableCell className="text-center text-muted-foreground">{r.openingStock}</TableCell>
+                <TableCell className="text-center text-success">+{r.incoming}</TableCell>
+                <TableCell className="text-center text-destructive">-{r.outgoing}</TableCell>
+                <TableCell className="text-center">{r.closingStock}</TableCell>
                 <TableCell className="pr-6"><Badge className={cn("border-0", st.className)}>{st.label}</Badge></TableCell>
               </TableRow>
             );
@@ -341,14 +341,14 @@ function StockReport({ dari, sampai }: RangeProps) {
 
 // ---------- top products ----------
 function TopProductsReport({ dari, sampai }: RangeProps) {
-  const laporan = LaporanController.getInstance();
-  const rows = laporan.barangTerlaris(10, dari, sampai);
+  const report = ReportController.getInstance();
+  const rows = report.topProducts(10, dari, sampai);
   return (
     <div className="space-y-5">
       <ChartCard title="Top 10 Barang Terlaris">
         <div className="h-96 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={rows.map((r) => ({ name: r.nama, sold: r.terjual }))} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
+            <BarChart data={rows.map((r) => ({ name: r.name, sold: r.sold }))} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
               <XAxis type="number" tickLine={false} axisLine={false} tick={axisTick} />
               <YAxis type="category" dataKey="name" width={150} tickLine={false} axisLine={false} tick={{ ...axisTick, fontSize: 11 }} />
@@ -378,16 +378,16 @@ function TopProductsReport({ dari, sampai }: RangeProps) {
               </TableRow>
             ) : (
               rows.map((p, i) => (
-                <TableRow key={p.nama}>
+                <TableRow key={p.name}>
                   <TableCell className="pl-6">
                     <span className={cn(
                       "flex size-7 items-center justify-center rounded-full text-xs",
                       i < 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
                     )}>{i + 1}</span>
                   </TableCell>
-                  <TableCell>{p.nama}</TableCell>
-                  <TableCell className="text-center">{p.terjual}</TableCell>
-                  <TableCell className="pr-6 text-right">{rupiah(p.pendapatan)}</TableCell>
+                  <TableCell>{p.name}</TableCell>
+                  <TableCell className="text-center">{p.sold}</TableCell>
+                  <TableCell className="pr-6 text-right">{rupiah(p.revenue)}</TableCell>
                 </TableRow>
               ))
             )}
@@ -400,21 +400,21 @@ function TopProductsReport({ dari, sampai }: RangeProps) {
 
 // ---------- profit report ----------
 function ProfitReport({ dari, sampai }: RangeProps) {
-  const laporan = LaporanController.getInstance();
-  const data = laporan.laporanKeuntungan(dari, sampai);
+  const report = ReportController.getInstance();
+  const data = report.profitReport(dari, sampai);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard icon={Coins} label="Total Omset" value={rupiah(data.omset)} tone="primary" />
-        <SummaryCard icon={Wallet} label="Total Modal" value={rupiah(data.modal)} tone="warning" />
-        <SummaryCard icon={PiggyBank} label="Total Keuntungan" value={rupiah(data.untung)} tone="success" />
-        <SummaryCard icon={Percent} label="Margin" value={`${data.marginPersen}%`} tone="info" />
+        <SummaryCard icon={Coins} label="Total Omset" value={rupiah(data.revenue)} tone="primary" />
+        <SummaryCard icon={Wallet} label="Total Modal" value={rupiah(data.cost)} tone="warning" />
+        <SummaryCard icon={PiggyBank} label="Total Keuntungan" value={rupiah(data.profit)} tone="success" />
+        <SummaryCard icon={Percent} label="Margin" value={`${data.marginPercent}%`} tone="info" />
       </div>
 
       <ChartCard title="Perbandingan Omset vs Keuntungan (4 Minggu Terakhir)">
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data.trenMingguan.map((t) => ({ period: t.periode, omset: t.omset, untung: t.untung }))} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+            <LineChart data={data.weeklyTrend.map((t) => ({ period: t.period, omset: t.revenue, untung: t.profit }))} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="period" tickLine={false} axisLine={false} tick={axisTick} />
               <YAxis tickFormatter={yRupiah} tickLine={false} axisLine={false} width={44} tick={axisTick} />
@@ -440,21 +440,21 @@ function ProfitReport({ dari, sampai }: RangeProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.perBarang.length === 0 ? (
+            {data.perProduct.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                   Belum ada penjualan pada rentang tanggal ini.
                 </TableCell>
               </TableRow>
             ) : (
-              data.perBarang.map((r) => (
-                <TableRow key={r.nama}>
-                  <TableCell className="pl-6">{r.nama}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{rupiah(r.hargaBeli)}</TableCell>
-                  <TableCell className="text-right">{rupiah(r.hargaJual)}</TableCell>
-                  <TableCell className="text-center">{r.terjual}</TableCell>
-                  <TableCell className="text-right text-success">{rupiah(r.untungPerItem)}</TableCell>
-                  <TableCell className="pr-6 text-right text-success">{rupiah(r.totalUntung)}</TableCell>
+              data.perProduct.map((r) => (
+                <TableRow key={r.name}>
+                  <TableCell className="pl-6">{r.name}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{rupiah(r.purchasePrice)}</TableCell>
+                  <TableCell className="text-right">{rupiah(r.sellPrice)}</TableCell>
+                  <TableCell className="text-center">{r.sold}</TableCell>
+                  <TableCell className="text-right text-success">{rupiah(r.profitPerItem)}</TableCell>
+                  <TableCell className="pr-6 text-right text-success">{rupiah(r.totalProfit)}</TableCell>
                 </TableRow>
               ))
             )}
@@ -466,7 +466,7 @@ function ProfitReport({ dari, sampai }: RangeProps) {
 }
 
 // ---------- service report ----------
-const SVC_BADGE: Record<StatusService, { label: string; className: string }> = {
+const SVC_BADGE: Record<ServiceStatus, { label: string; className: string }> = {
   antri: { label: "Menunggu", className: "bg-muted text-muted-foreground" },
   diperiksa: { label: "Diperiksa", className: "bg-info/15 text-info" },
   dikerjakan: { label: "Dikerjakan", className: "bg-warning/15 text-warning" },
@@ -476,15 +476,15 @@ const SVC_BADGE: Record<StatusService, { label: string; className: string }> = {
 };
 
 function ServiceReport({ dari, sampai }: RangeProps) {
-  const laporan = LaporanController.getInstance();
-  const data = laporan.laporanService(dari, sampai);
+  const report = ReportController.getInstance();
+  const data = report.serviceReport(dari, sampai);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard icon={Wrench} label="Total Service Masuk" value={`${data.masuk} unit`} tone="primary" />
-        <SummaryCard icon={CheckCircle2} label="Service Selesai" value={`${data.selesai} unit`} tone="success" />
+        <SummaryCard icon={Wrench} label="Total Service Masuk" value={`${data.incoming} unit`} tone="primary" />
+        <SummaryCard icon={CheckCircle2} label="Service Selesai" value={`${data.done} unit`} tone="success" />
         <SummaryCard icon={Clock} label="Service Pending" value={`${data.pending} unit`} tone="warning" />
-        <SummaryCard icon={Wallet} label="Pendapatan Service" value={rupiah(data.pendapatan)} tone="info" />
+        <SummaryCard icon={Wallet} label="Pendapatan Service" value={rupiah(data.revenue)} tone="info" />
       </div>
 
       <TableCard title="Detail Service">
@@ -501,24 +501,24 @@ function ServiceReport({ dari, sampai }: RangeProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.daftar.length === 0 ? (
+            {data.list.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                   Tidak ada service pada rentang tanggal ini.
                 </TableCell>
               </TableRow>
             ) : (
-              data.daftar.map((s) => {
+              data.list.map((s) => {
                 const meta = SVC_BADGE[s.status];
-                const selesai = s.tanggalSelesai();
+                const selesai = s.completedAt();
                 return (
                   <TableRow key={s.id}>
-                    <TableCell className="pl-6 text-primary">{s.nomor}</TableCell>
-                    <TableCell>{s.pelanggan}</TableCell>
-                    <TableCell className="text-muted-foreground">{fmtDate(s.tanggalMasuk)}</TableCell>
+                    <TableCell className="pl-6 text-primary">{s.number}</TableCell>
+                    <TableCell>{s.customer}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtDate(s.receivedAt)}</TableCell>
                     <TableCell className="text-muted-foreground">{selesai ? fmtDate(selesai) : "-"}</TableCell>
-                    <TableCell className="text-muted-foreground">{s.teknisi}</TableCell>
-                    <TableCell className="text-right">{rupiah(s.totalBiaya())}</TableCell>
+                    <TableCell className="text-muted-foreground">{s.technician}</TableCell>
+                    <TableCell className="text-right">{rupiah(s.totalCost())}</TableCell>
                     <TableCell className="pr-6"><Badge className={cn("border-0", meta.className)}>{meta.label}</Badge></TableCell>
                   </TableRow>
                 );

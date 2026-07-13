@@ -7,11 +7,11 @@ export type Listener = () => void;
 
 export abstract class Observable {
   private listeners = new Set<Listener>();
-  private _versi = 0;
+  private _version = 0;
 
   /** Nomor versi bertambah setiap kali data berubah — dipakai sebagai snapshot React. */
-  get versi(): number {
-    return this._versi;
+  get version(): number {
+    return this._version;
   }
 
   subscribe(listener: Listener): () => void {
@@ -22,7 +22,7 @@ export abstract class Observable {
   }
 
   protected notify(): void {
-    this._versi++;
+    this._version++;
     this.listeners.forEach((listener) => listener());
   }
 }

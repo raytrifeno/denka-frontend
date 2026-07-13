@@ -1,31 +1,31 @@
 import { Observable } from "../core/Observable";
-import { buatId } from "../core/Entity";
+import { createId } from "../core/Entity";
 import { Database } from "../Database";
-import type { Barang } from "../entities/Barang";
+import type { Product } from "../entities/Product";
 import {
   ServiceOrder,
-  URUTAN_STATUS,
-  type PrioritasService,
-  type StatusService,
+  STATUS_ORDER,
+  type ServicePriority,
+  type ServiceStatus,
 } from "../entities/ServiceOrder";
 
-export interface FormServiceBaru {
-  pelanggan: string;
-  telepon: string;
-  alamat: string;
-  jenisUnit: string;
-  merk: string;
+export interface NewServiceForm {
+  customer: string;
+  phone: string;
+  address: string;
+  unitType: string;
+  brand: string;
   model: string;
-  keluhan: string;
-  prioritas: PrioritasService;
-  teknisi: string;
+  complaint: string;
+  priority: ServicePriority;
+  technician: string;
 }
 
-export type ErrorService = Record<string, string>;
+export type ServiceErrors = Record<string, string>;
 
-export const DAFTAR_TEKNISI = ["Budi Denka", "Rizki Teknisi", "Agus Pratama"];
+export const TECHNICIANS = ["Budi Denka", "Rizki Teknisi", "Agus Pratama"];
 
-export const PILIHAN_KELENGKAPAN = [
+export const ACCESSORY_OPTIONS = [
   "Charger / Adaptor",
   "Tas Laptop",
   "Baterai",
@@ -34,9 +34,8 @@ export const PILIHAN_KELENGKAPAN = [
 ];
 
 /**
- * ServiceController — controller class untuk tiket service komputer.
- * Mengatur alur status, sparepart (terhubung ke stok Barang),
- * dan pembuatan tiket baru.
+ * ServiceController — controller for computer service tickets.
+ * Manages the status flow, parts (linked to Product stock), and ticket creation.
  */
 export class ServiceController extends Observable {
   private static instance: ServiceController | null = null;
@@ -44,8 +43,8 @@ export class ServiceController extends Observable {
 
   private constructor() {
     super();
-    this.db.service.subscribe(() => this.notify());
-    this.db.barang.subscribe(() => this.notify());
+    this.db.services.subscribe(() => this.notify());
+    this.db.products.subscribe(() => this.notify());
   }
 
   static getInstance(): ServiceController {
@@ -55,111 +54,111 @@ export class ServiceController extends Observable {
     return ServiceController.instance;
   }
 
-  daftar(kataKunci = "", status: StatusService | "all" = "all"): ServiceOrder[] {
-    return this.db.service.cari(kataKunci, status);
+  list(keyword = "", status: ServiceStatus | "all" = "all"): ServiceOrder[] {
+    return this.db.services.search(keyword, status);
   }
 
-  cariById(id: string): ServiceOrder | undefined {
-    return this.db.service.findById(id);
+  findById(id: string): ServiceOrder | undefined {
+    return this.db.services.findById(id);
   }
 
-  hitungPerStatus(): Record<string, number> {
-    const hasil: Record<string, number> = { all: this.db.service.count() };
-    URUTAN_STATUS.forEach((status) => {
-      hasil[status] = this.db.service.byStatus(status).length;
+  countByStatus(): Record<string, number> {
+    const result: Record<string, number> = { all: this.db.services.count() };
+    STATUS_ORDER.forEach((status) => {
+      result[status] = this.db.services.byStatus(status).length;
     });
-    return hasil;
+    return result;
   }
 
-  ubahStatus(id: string, status: StatusService): void {
-    const service = this.db.service.findById(id);
-    if (service && service.ubahStatus(status)) {
-      this.db.service.touch();
+  changeStatus(id: string, status: ServiceStatus): void {
+    const service = this.db.services.findById(id);
+    if (service && service.changeStatus(status)) {
+      this.db.services.touch();
     }
   }
 
-  perbaruiInfo(
+  updateInfo(
     id: string,
-    patch: { keluhan?: string; diagnosa?: string; teknisi?: string; biayaJasa?: number },
+    patch: { complaint?: string; diagnosis?: string; technician?: string; serviceFee?: number },
   ): void {
-    const service = this.db.service.findById(id);
+    const service = this.db.services.findById(id);
     if (!service) return;
-    if (patch.keluhan !== undefined) service.keluhan = patch.keluhan;
-    if (patch.diagnosa !== undefined) service.diagnosa = patch.diagnosa;
-    if (patch.teknisi !== undefined) service.teknisi = patch.teknisi;
-    if (patch.biayaJasa !== undefined) service.biayaJasa = patch.biayaJasa;
-    this.db.service.touch();
+    if (patch.complaint !== undefined) service.complaint = patch.complaint;
+    if (patch.diagnosis !== undefined) service.diagnosis = patch.diagnosis;
+    if (patch.technician !== undefined) service.technician = patch.technician;
+    if (patch.serviceFee !== undefined) service.serviceFee = patch.serviceFee;
+    this.db.services.touch();
   }
 
-  toggleKelengkapan(id: string, nama: string): void {
-    const service = this.db.service.findById(id);
+  toggleAccessory(id: string, name: string): void {
+    const service = this.db.services.findById(id);
     if (!service) return;
-    service.toggleKelengkapan(nama);
-    this.db.service.touch();
+    service.toggleAccessory(name);
+    this.db.services.touch();
   }
 
-  /** Pilihan sparepart dari inventori (hanya yang masih ada stoknya). */
-  pilihanSparepart(): Barang[] {
-    return this.db.barang.tersedia();
+  /** Part options from inventory (only those still in stock). */
+  partOptions(): Product[] {
+    return this.db.products.available();
   }
 
-  /** Tambah sparepart ke tiket sekaligus mengurangi stok inventori. */
-  tambahSparepart(id: string, barangId: string, jumlah: number): { sukses: boolean; pesan?: string } {
-    const service = this.db.service.findById(id);
-    const barang = this.db.barang.findById(barangId);
-    if (!service || !barang) return { sukses: false, pesan: "Data tidak ditemukan." };
-    if (!barang.stokCukup(jumlah)) {
-      return { sukses: false, pesan: `Stok ${barang.nama} tidak mencukupi (tersedia ${barang.stok}).` };
+  /** Add a part to the ticket while reducing inventory stock. */
+  addPart(id: string, productId: string, quantity: number): { success: boolean; message?: string } {
+    const service = this.db.services.findById(id);
+    const product = this.db.products.findById(productId);
+    if (!service || !product) return { success: false, message: "Data tidak ditemukan." };
+    if (!product.hasStock(quantity)) {
+      return { success: false, message: `Stok ${product.name} tidak mencukupi (tersedia ${product.stock}).` };
     }
-    barang.kurangiStok(jumlah);
-    service.tambahSparepart(barang.id, barang.nama, jumlah, barang.hargaJual);
-    this.db.service.touch();
-    this.db.barang.touch();
-    return { sukses: true };
+    product.reduceStock(quantity);
+    service.addPart(product.id, product.name, quantity, product.sellPrice);
+    this.db.services.touch();
+    this.db.products.touch();
+    return { success: true };
   }
 
-  /** Hapus sparepart dari tiket dan kembalikan stoknya ke inventori. */
-  hapusSparepart(id: string, partId: string): void {
-    const service = this.db.service.findById(id);
+  /** Remove a part from the ticket and return its stock to inventory. */
+  removePart(id: string, partId: string): void {
+    const service = this.db.services.findById(id);
     if (!service) return;
-    const part = service.hapusSparepart(partId);
+    const part = service.removePart(partId);
     if (part) {
-      this.db.barang.findById(part.barangId)?.tambahStok(part.jumlah);
-      this.db.barang.touch();
+      this.db.products.findById(part.productId)?.addStock(part.quantity);
+      this.db.products.touch();
     }
-    this.db.service.touch();
+    this.db.services.touch();
   }
 
-  validasi(form: FormServiceBaru): ErrorService {
-    const errors: ErrorService = {};
-    if (!form.pelanggan.trim()) errors.pelanggan = "Nama pelanggan wajib diisi.";
-    if (!form.telepon.trim()) errors.telepon = "No. WhatsApp wajib diisi.";
-    if (!form.jenisUnit) errors.jenisUnit = "Pilih jenis unit.";
-    if (!form.merk.trim()) errors.merk = "Merk wajib diisi.";
-    if (!form.keluhan.trim()) errors.keluhan = "Keluhan wajib diisi.";
+  validate(form: NewServiceForm): ServiceErrors {
+    const errors: ServiceErrors = {};
+    if (!form.customer.trim()) errors.customer = "Nama pelanggan wajib diisi.";
+    if (!form.phone.trim()) errors.phone = "No. WhatsApp wajib diisi.";
+    if (!form.unitType) errors.unitType = "Pilih jenis unit.";
+    if (!form.brand.trim()) errors.brand = "Merk wajib diisi.";
+    if (!form.complaint.trim()) errors.complaint = "Keluhan wajib diisi.";
     return errors;
   }
 
-  buatService(form: FormServiceBaru): { sukses: boolean; errors: ErrorService } {
-    const errors = this.validasi(form);
-    if (Object.keys(errors).length > 0) return { sukses: false, errors };
+  createService(form: NewServiceForm): { success: boolean; errors: ServiceErrors } {
+    const errors = this.validate(form);
+    if (Object.keys(errors).length > 0) return { success: false, errors };
 
-    this.db.service.save(
+    this.db.services.save(
       new ServiceOrder({
-        id: buatId("srv"),
-        nomor: this.db.service.nomorBerikutnya(),
-        pelanggan: form.pelanggan.trim(),
-        telepon: form.telepon.trim(),
-        alamat: form.alamat.trim() || undefined,
-        jenisUnit: form.jenisUnit,
-        merk: form.merk.trim(),
+        id: createId("srv"),
+        number: this.db.services.nextNumber(),
+        customer: form.customer.trim(),
+        phone: form.phone.trim(),
+        address: form.address.trim() || undefined,
+        unitType: form.unitType,
+        brand: form.brand.trim(),
         model: form.model.trim() || undefined,
-        keluhan: form.keluhan.trim(),
-        teknisi: form.teknisi,
-        prioritas: form.prioritas,
-        tanggalMasuk: new Date(),
+        complaint: form.complaint.trim(),
+        technician: form.technician,
+        priority: form.priority,
+        receivedAt: new Date(),
       }),
     );
-    return { sukses: true, errors: {} };
+    return { success: true, errors: {} };
   }
 }

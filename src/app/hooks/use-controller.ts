@@ -5,10 +5,10 @@ import type { Observable } from "../../domain/core/Observable";
  * Hubungkan boundary (komponen React) dengan controller/repository (Observable).
  * Komponen otomatis dirender ulang setiap kali controller memanggil notify().
  */
-export function useController(sumber: Observable): number {
+export function useController(source: Observable): number {
   const subscribe = useCallback(
-    (onChange: () => void) => sumber.subscribe(onChange),
-    [sumber],
+    (onChange: () => void) => source.subscribe(onChange),
+    [source],
   );
-  return useSyncExternalStore(subscribe, () => sumber.versi);
+  return useSyncExternalStore(subscribe, () => source.version);
 }

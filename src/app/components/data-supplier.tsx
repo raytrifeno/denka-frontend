@@ -33,12 +33,12 @@ import { cn } from "./ui/utils";
 import type { Supplier } from "../../domain/entities/Supplier";
 import {
   SupplierController,
-  type ErrorSupplier,
-  type FormSupplier,
+  type SupplierErrors,
+  type SupplierForm,
 } from "../../domain/controllers/SupplierController";
 import { useController } from "../hooks/use-controller";
 
-const EMPTY: FormSupplier = { nama: "", kontakPerson: "", telepon: "", alamat: "", catatan: "" };
+const EMPTY: SupplierForm = { name: "", contactPerson: "", phone: "", address: "", notes: "" };
 
 /**
  * DataSupplier — boundary class data pemasok.
@@ -52,7 +52,7 @@ export function DataSupplier() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
 
-  const filtered = controller.daftar(search);
+  const filtered = controller.list(search);
 
   function openAdd() {
     setEditing(null);
@@ -113,13 +113,13 @@ export function DataSupplier() {
             ) : (
               filtered.map((s) => (
                 <TableRow key={s.id}>
-                  <TableCell>{s.nama}</TableCell>
-                  <TableCell className="text-muted-foreground">{s.kontakPerson}</TableCell>
-                  <TableCell className="text-muted-foreground">{s.telepon}</TableCell>
+                  <TableCell>{s.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.contactPerson}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.phone}</TableCell>
                   <TableCell className="max-w-xs">
                     <span className="flex items-start gap-1.5 text-muted-foreground">
                       <MapPin className="mt-0.5 size-3.5 shrink-0" />
-                      <span className="line-clamp-2">{s.alamat}</span>
+                      <span className="line-clamp-2">{s.address}</span>
                     </span>
                   </TableCell>
                   <TableCell className="text-center">
@@ -130,20 +130,20 @@ export function DataSupplier() {
                           className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-sm text-primary transition-colors hover:bg-primary/20"
                         >
                           <Package className="size-3.5" />
-                          {s.jumlahBarang()} barang
+                          {s.itemCount()} barang
                         </button>
                       </PopoverTrigger>
                       <PopoverContent align="center" className="w-64 p-0">
                         <div className="border-b border-border px-3 py-2">
-                          <p className="text-sm">Barang dari {s.nama}</p>
+                          <p className="text-sm">Barang dari {s.name}</p>
                         </div>
-                        {s.jumlahBarang() === 0 ? (
+                        {s.itemCount() === 0 ? (
                           <p className="px-3 py-4 text-center text-sm text-muted-foreground">
                             Belum ada barang.
                           </p>
                         ) : (
                           <ul className="max-h-56 overflow-y-auto py-1">
-                            {s.barangDisuplai.map((it) => (
+                            {s.suppliedItems.map((it) => (
                               <li key={it} className="flex items-center gap-2 px-3 py-1.5 text-sm">
                                 <Package className="size-3.5 text-muted-foreground" />
                                 {it}
@@ -157,7 +157,7 @@ export function DataSupplier() {
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       <IconButton icon={Pencil} label="Edit" onClick={() => openEdit(s)} />
-                      <IconButton icon={Trash2} label="Hapus" danger onClick={() => controller.hapus(s.id)} />
+                      <IconButton icon={Trash2} label="Hapus" danger onClick={() => controller.remove(s.id)} />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -202,8 +202,8 @@ function SupplierDialog({
   editing: Supplier | null;
 }) {
   const controller = SupplierController.getInstance();
-  const [form, setForm] = useState<FormSupplier>(EMPTY);
-  const [errors, setErrors] = useState<ErrorSupplier>({});
+  const [form, setForm] = useState<SupplierForm>(EMPTY);
+  const [errors, setErrors] = useState<SupplierErrors>({});
   const [lastId, setLastId] = useState<string | null>(null);
 
   // sinkronkan form saat membuka supplier lain (atau tambah baru)
@@ -211,7 +211,7 @@ function SupplierDialog({
   if (open && lastId !== currentId) {
     setForm(
       editing
-        ? { nama: editing.nama, kontakPerson: editing.kontakPerson, telepon: editing.telepon, alamat: editing.alamat, catatan: editing.catatan || "" }
+        ? { name: editing.name, contactPerson: editing.contactPerson, phone: editing.phone, address: editing.address, notes: editing.notes || "" }
         : EMPTY,
     );
     setErrors({});
@@ -219,15 +219,15 @@ function SupplierDialog({
   }
   if (!open && lastId !== null) setLastId(null);
 
-  function set<K extends keyof FormSupplier>(k: K, v: string) {
+  function set<K extends keyof SupplierForm>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: "" }));
   }
 
   function submit() {
-    const hasil = controller.simpan(form, editing?.id);
-    if (!hasil.sukses) {
-      setErrors(hasil.errors);
+    const result = controller.save(form, editing?.id);
+    if (!result.success) {
+      setErrors(result.errors);
       return;
     }
     onOpenChange(false);
@@ -244,37 +244,37 @@ function SupplierDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <Field label="Nama Supplier" error={errors.nama}>
-            <Input value={form.nama} onChange={(e) => set("nama", e.target.value)}
+          <Field label="Nama Supplier" error={errors.name}>
+            <Input value={form.name} onChange={(e) => set("name", e.target.value)}
               placeholder="Contoh: PT Sumber Komputer"
-              aria-invalid={!!errors.nama}
-              className={cn("bg-input-background", errors.nama && "border-destructive")} />
+              aria-invalid={!!errors.name}
+              className={cn("bg-input-background", errors.name && "border-destructive")} />
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Kontak Person" error={errors.kontakPerson}>
-              <Input value={form.kontakPerson} onChange={(e) => set("kontakPerson", e.target.value)}
+            <Field label="Kontak Person" error={errors.contactPerson}>
+              <Input value={form.contactPerson} onChange={(e) => set("contactPerson", e.target.value)}
                 placeholder="Nama PIC"
-                aria-invalid={!!errors.kontakPerson}
-                className={cn("bg-input-background", errors.kontakPerson && "border-destructive")} />
+                aria-invalid={!!errors.contactPerson}
+                className={cn("bg-input-background", errors.contactPerson && "border-destructive")} />
             </Field>
-            <Field label="No. Telepon / WhatsApp" error={errors.telepon}>
-              <Input value={form.telepon} onChange={(e) => set("telepon", e.target.value)}
+            <Field label="No. Telepon / WhatsApp" error={errors.phone}>
+              <Input value={form.phone} onChange={(e) => set("phone", e.target.value)}
                 placeholder="08xxxxxxxxxx"
-                aria-invalid={!!errors.telepon}
-                className={cn("bg-input-background", errors.telepon && "border-destructive")} />
+                aria-invalid={!!errors.phone}
+                className={cn("bg-input-background", errors.phone && "border-destructive")} />
             </Field>
           </div>
 
-          <Field label="Alamat" error={errors.alamat}>
-            <Textarea value={form.alamat} onChange={(e) => set("alamat", e.target.value)}
+          <Field label="Alamat" error={errors.address}>
+            <Textarea value={form.address} onChange={(e) => set("address", e.target.value)}
               placeholder="Alamat lengkap supplier..."
-              aria-invalid={!!errors.alamat}
-              className={cn("min-h-20 bg-input-background", errors.alamat && "border-destructive")} />
+              aria-invalid={!!errors.address}
+              className={cn("min-h-20 bg-input-background", errors.address && "border-destructive")} />
           </Field>
 
           <Field label="Catatan (opsional)">
-            <Textarea value={form.catatan} onChange={(e) => set("catatan", e.target.value)}
+            <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)}
               placeholder="Catatan tambahan, syarat pembayaran, dll."
               className="min-h-20 bg-input-background" />
           </Field>

@@ -1,85 +1,85 @@
 import { Entity } from "../core/Entity";
 
-export interface DataSupplier {
+export interface SupplierData {
   id: string;
-  nama: string;
-  kontakPerson: string;
-  telepon: string;
-  alamat: string;
-  catatan?: string;
-  barangDisuplai?: string[];
+  name: string;
+  contactPerson: string;
+  phone: string;
+  address: string;
+  notes?: string;
+  suppliedItems?: string[];
 }
 
-/** Entity class Supplier — pemasok barang toko. */
+/** Supplier entity — a store goods supplier. */
 export class Supplier extends Entity {
-  private _nama: string;
-  private _kontakPerson: string;
-  private _telepon: string;
-  private _alamat: string;
-  private _catatan?: string;
-  private _barangDisuplai: string[];
+  private _name: string;
+  private _contactPerson: string;
+  private _phone: string;
+  private _address: string;
+  private _notes?: string;
+  private _suppliedItems: string[];
 
-  constructor(data: DataSupplier) {
+  constructor(data: SupplierData) {
     super(data.id);
-    this._nama = data.nama;
-    this._kontakPerson = data.kontakPerson;
-    this._telepon = data.telepon;
-    this._alamat = data.alamat;
-    this._catatan = data.catatan;
-    this._barangDisuplai = data.barangDisuplai ?? [];
+    this._name = data.name;
+    this._contactPerson = data.contactPerson;
+    this._phone = data.phone;
+    this._address = data.address;
+    this._notes = data.notes;
+    this._suppliedItems = data.suppliedItems ?? [];
   }
 
-  get nama(): string { return this._nama; }
-  get kontakPerson(): string { return this._kontakPerson; }
-  get telepon(): string { return this._telepon; }
-  get alamat(): string { return this._alamat; }
-  get catatan(): string | undefined { return this._catatan; }
-  get barangDisuplai(): string[] { return [...this._barangDisuplai]; }
+  get name(): string { return this._name; }
+  get contactPerson(): string { return this._contactPerson; }
+  get phone(): string { return this._phone; }
+  get address(): string { return this._address; }
+  get notes(): string | undefined { return this._notes; }
+  get suppliedItems(): string[] { return [...this._suppliedItems]; }
 
-  jumlahBarang(): number {
-    return this._barangDisuplai.length;
+  itemCount(): number {
+    return this._suppliedItems.length;
   }
 
-  /** Catat bahwa supplier ini memasok barang tertentu (dipanggil saat barang masuk). */
-  tambahBarangDisuplai(namaBarang: string): void {
-    if (!this._barangDisuplai.includes(namaBarang)) {
-      this._barangDisuplai.push(namaBarang);
+  /** Record that this supplier provides a given product (called on stock-in). */
+  addSuppliedItem(productName: string): void {
+    if (!this._suppliedItems.includes(productName)) {
+      this._suppliedItems.push(productName);
     }
   }
 
-  perbarui(data: Omit<DataSupplier, "id" | "barangDisuplai">): void {
-    this._nama = data.nama;
-    this._kontakPerson = data.kontakPerson;
-    this._telepon = data.telepon;
-    this._alamat = data.alamat;
-    this._catatan = data.catatan;
+  update(data: Omit<SupplierData, "id" | "suppliedItems">): void {
+    this._name = data.name;
+    this._contactPerson = data.contactPerson;
+    this._phone = data.phone;
+    this._address = data.address;
+    this._notes = data.notes;
   }
 
-  /** Serialisasi untuk penyimpanan lokal. */
-  toJSON(): DataSupplier {
+  /** Serialize for local storage. */
+  toJSON(): SupplierData {
     return {
       id: this.id,
-      nama: this._nama,
-      kontakPerson: this._kontakPerson,
-      telepon: this._telepon,
-      alamat: this._alamat,
-      catatan: this._catatan,
-      barangDisuplai: [...this._barangDisuplai],
+      name: this._name,
+      contactPerson: this._contactPerson,
+      phone: this._phone,
+      address: this._address,
+      notes: this._notes,
+      suppliedItems: [...this._suppliedItems],
     };
   }
 
-  static dariJSON(data: DataSupplier): Supplier {
+  static fromJSON(data: SupplierData): Supplier {
     return new Supplier(data);
   }
 
-  /** Pencocokan untuk kolom pencarian. */
-  cocok(kataKunci: string): boolean {
-    const q = kataKunci.trim().toLowerCase();
+  /** Match for the search box. */
+  matches(keyword: string): boolean {
+    const q = keyword.trim().toLowerCase();
     if (!q) return true;
     return (
-      this._nama.toLowerCase().includes(q) ||
-      this._kontakPerson.toLowerCase().includes(q) ||
-      this._telepon.includes(q)
+      this._name.toLowerCase().includes(q) ||
+      this._contactPerson.toLowerCase().includes(q) ||
+      this._phone.includes(q)
     );
   }
 }

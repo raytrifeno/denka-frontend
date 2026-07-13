@@ -1,6 +1,6 @@
-import { Entity, buatId } from "../core/Entity";
+import { Entity, createId } from "../core/Entity";
 
-export type StatusService =
+export type ServiceStatus =
   | "antri"
   | "diperiksa"
   | "dikerjakan"
@@ -8,7 +8,7 @@ export type StatusService =
   | "selesai"
   | "diambil";
 
-export const URUTAN_STATUS: StatusService[] = [
+export const STATUS_ORDER: ServiceStatus[] = [
   "antri",
   "diperiksa",
   "dikerjakan",
@@ -17,239 +17,239 @@ export const URUTAN_STATUS: StatusService[] = [
   "diambil",
 ];
 
-export type PrioritasService = "normal" | "urgent";
+export type ServicePriority = "normal" | "urgent";
 
-/** Satu sparepart yang dipakai dalam pengerjaan service. */
-export class SparepartTerpakai {
+/** One spare part used while working on a service order. */
+export class ServicePart {
   constructor(
     readonly id: string,
-    readonly barangId: string,
-    readonly nama: string,
-    readonly jumlah: number,
-    readonly harga: number,
+    readonly productId: string,
+    readonly name: string,
+    readonly quantity: number,
+    readonly price: number,
   ) {}
 
   subtotal(): number {
-    return this.harga * this.jumlah;
+    return this.price * this.quantity;
   }
 }
 
-/** Satu catatan perubahan status pada linimasa service. */
-export class RiwayatStatus {
+/** One status-change entry on the service timeline. */
+export class StatusLog {
   constructor(
-    readonly status: StatusService,
-    readonly pada: Date,
+    readonly status: ServiceStatus,
+    readonly at: Date,
   ) {}
 }
 
-export interface DataServiceOrder {
+export interface ServiceOrderData {
   id: string;
-  nomor: string;
-  pelanggan: string;
-  telepon: string;
-  alamat?: string;
-  jenisUnit: string;
-  merk: string;
+  number: string;
+  customer: string;
+  phone: string;
+  address?: string;
+  unitType: string;
+  brand: string;
   model?: string;
-  nomorSeri?: string;
-  kelengkapan?: string[];
-  keluhan: string;
-  diagnosa?: string;
-  teknisi: string;
-  prioritas: PrioritasService;
-  status?: StatusService;
-  tanggalMasuk: Date;
-  biayaJasa?: number;
-  sparepart?: SparepartTerpakai[];
-  riwayat?: RiwayatStatus[];
+  serialNo?: string;
+  accessories?: string[];
+  complaint: string;
+  diagnosis?: string;
+  technician: string;
+  priority: ServicePriority;
+  status?: ServiceStatus;
+  receivedAt: Date;
+  serviceFee?: number;
+  parts?: ServicePart[];
+  history?: StatusLog[];
 }
 
 /**
- * Entity class ServiceOrder — satu tiket service/reparasi.
- * Perubahan status hanya lewat ubahStatus() sehingga riwayat selalu tercatat.
+ * ServiceOrder entity — one repair/service ticket.
+ * Status changes only go through changeStatus() so history is always logged.
  */
 export class ServiceOrder extends Entity {
-  private _nomor: string;
-  private _pelanggan: string;
-  private _telepon: string;
-  private _alamat?: string;
-  private _jenisUnit: string;
-  private _merk: string;
+  private _number: string;
+  private _customer: string;
+  private _phone: string;
+  private _address?: string;
+  private _unitType: string;
+  private _brand: string;
   private _model?: string;
-  private _nomorSeri?: string;
-  private _kelengkapan: string[];
-  private _keluhan: string;
-  private _diagnosa?: string;
-  private _teknisi: string;
-  private _prioritas: PrioritasService;
-  private _status: StatusService;
-  private _tanggalMasuk: Date;
-  private _biayaJasa: number;
-  private _sparepart: SparepartTerpakai[];
-  private _riwayat: RiwayatStatus[];
+  private _serialNo?: string;
+  private _accessories: string[];
+  private _complaint: string;
+  private _diagnosis?: string;
+  private _technician: string;
+  private _priority: ServicePriority;
+  private _status: ServiceStatus;
+  private _receivedAt: Date;
+  private _serviceFee: number;
+  private _parts: ServicePart[];
+  private _history: StatusLog[];
 
-  constructor(data: DataServiceOrder) {
+  constructor(data: ServiceOrderData) {
     super(data.id);
-    this._nomor = data.nomor;
-    this._pelanggan = data.pelanggan;
-    this._telepon = data.telepon;
-    this._alamat = data.alamat;
-    this._jenisUnit = data.jenisUnit;
-    this._merk = data.merk;
+    this._number = data.number;
+    this._customer = data.customer;
+    this._phone = data.phone;
+    this._address = data.address;
+    this._unitType = data.unitType;
+    this._brand = data.brand;
     this._model = data.model;
-    this._nomorSeri = data.nomorSeri;
-    this._kelengkapan = data.kelengkapan ?? [];
-    this._keluhan = data.keluhan;
-    this._diagnosa = data.diagnosa;
-    this._teknisi = data.teknisi;
-    this._prioritas = data.prioritas;
+    this._serialNo = data.serialNo;
+    this._accessories = data.accessories ?? [];
+    this._complaint = data.complaint;
+    this._diagnosis = data.diagnosis;
+    this._technician = data.technician;
+    this._priority = data.priority;
     this._status = data.status ?? "antri";
-    this._tanggalMasuk = data.tanggalMasuk;
-    this._biayaJasa = data.biayaJasa ?? 0;
-    this._sparepart = data.sparepart ?? [];
-    this._riwayat = data.riwayat ?? [new RiwayatStatus(this._status, data.tanggalMasuk)];
+    this._receivedAt = data.receivedAt;
+    this._serviceFee = data.serviceFee ?? 0;
+    this._parts = data.parts ?? [];
+    this._history = data.history ?? [new StatusLog(this._status, data.receivedAt)];
   }
 
-  // ----- getter -----
-  get nomor(): string { return this._nomor; }
-  get pelanggan(): string { return this._pelanggan; }
-  get telepon(): string { return this._telepon; }
-  get alamat(): string | undefined { return this._alamat; }
-  get jenisUnit(): string { return this._jenisUnit; }
-  get merk(): string { return this._merk; }
+  // ----- getters -----
+  get number(): string { return this._number; }
+  get customer(): string { return this._customer; }
+  get phone(): string { return this._phone; }
+  get address(): string | undefined { return this._address; }
+  get unitType(): string { return this._unitType; }
+  get brand(): string { return this._brand; }
   get model(): string | undefined { return this._model; }
-  get nomorSeri(): string | undefined { return this._nomorSeri; }
-  get kelengkapan(): string[] { return [...this._kelengkapan]; }
-  get keluhan(): string { return this._keluhan; }
-  get diagnosa(): string | undefined { return this._diagnosa; }
-  get teknisi(): string { return this._teknisi; }
-  get prioritas(): PrioritasService { return this._prioritas; }
-  get status(): StatusService { return this._status; }
-  get tanggalMasuk(): Date { return this._tanggalMasuk; }
-  get biayaJasa(): number { return this._biayaJasa; }
-  get sparepart(): SparepartTerpakai[] { return [...this._sparepart]; }
-  get riwayat(): RiwayatStatus[] { return [...this._riwayat]; }
+  get serialNo(): string | undefined { return this._serialNo; }
+  get accessories(): string[] { return [...this._accessories]; }
+  get complaint(): string { return this._complaint; }
+  get diagnosis(): string | undefined { return this._diagnosis; }
+  get technician(): string { return this._technician; }
+  get priority(): ServicePriority { return this._priority; }
+  get status(): ServiceStatus { return this._status; }
+  get receivedAt(): Date { return this._receivedAt; }
+  get serviceFee(): number { return this._serviceFee; }
+  get parts(): ServicePart[] { return [...this._parts]; }
+  get history(): StatusLog[] { return [...this._history]; }
 
-  // ----- metode domain -----
-  /** Ubah status dan catat ke riwayat. Mengembalikan false jika status sama. */
-  ubahStatus(status: StatusService): boolean {
+  // ----- domain methods -----
+  /** Change status and log it. Returns false if the status is unchanged. */
+  changeStatus(status: ServiceStatus): boolean {
     if (status === this._status) return false;
     this._status = status;
-    this._riwayat.push(new RiwayatStatus(status, new Date()));
+    this._history.push(new StatusLog(status, new Date()));
     return true;
   }
 
-  sudahSelesai(): boolean {
+  isDone(): boolean {
     return this._status === "selesai" || this._status === "diambil";
   }
 
-  sedangBerjalan(): boolean {
-    return !this.sudahSelesai();
+  isInProgress(): boolean {
+    return !this.isDone();
   }
 
-  /** Tanggal pertama kali berstatus selesai (untuk laporan), null jika belum. */
-  tanggalSelesai(): Date | null {
-    const log = this._riwayat.find((riwayat) => riwayat.status === "selesai");
-    return log ? log.pada : null;
+  /** First date the status became "selesai" (for reports), null if not yet. */
+  completedAt(): Date | null {
+    const log = this._history.find((entry) => entry.status === "selesai");
+    return log ? log.at : null;
   }
 
-  totalBiaya(): number {
-    return this._biayaJasa + this._sparepart.reduce((total, part) => total + part.subtotal(), 0);
+  totalCost(): number {
+    return this._serviceFee + this._parts.reduce((total, part) => total + part.subtotal(), 0);
   }
 
-  tambahSparepart(barangId: string, nama: string, jumlah: number, harga: number): SparepartTerpakai {
-    const part = new SparepartTerpakai(buatId("part"), barangId, nama, jumlah, harga);
-    this._sparepart.push(part);
+  addPart(productId: string, name: string, quantity: number, price: number): ServicePart {
+    const part = new ServicePart(createId("part"), productId, name, quantity, price);
+    this._parts.push(part);
     return part;
   }
 
-  hapusSparepart(partId: string): SparepartTerpakai | undefined {
-    const part = this._sparepart.find((item) => item.id === partId);
-    this._sparepart = this._sparepart.filter((item) => item.id !== partId);
+  removePart(partId: string): ServicePart | undefined {
+    const part = this._parts.find((item) => item.id === partId);
+    this._parts = this._parts.filter((item) => item.id !== partId);
     return part;
   }
 
-  toggleKelengkapan(nama: string): void {
-    if (this._kelengkapan.includes(nama)) {
-      this._kelengkapan = this._kelengkapan.filter((item) => item !== nama);
+  toggleAccessory(name: string): void {
+    if (this._accessories.includes(name)) {
+      this._accessories = this._accessories.filter((item) => item !== name);
     } else {
-      this._kelengkapan.push(nama);
+      this._accessories.push(name);
     }
   }
 
-  set keluhan(keluhan: string) { this._keluhan = keluhan; }
-  set diagnosa(diagnosa: string | undefined) { this._diagnosa = diagnosa; }
-  set teknisi(teknisi: string) { this._teknisi = teknisi; }
-  set biayaJasa(biaya: number) { this._biayaJasa = Math.max(0, biaya); }
+  set complaint(complaint: string) { this._complaint = complaint; }
+  set diagnosis(diagnosis: string | undefined) { this._diagnosis = diagnosis; }
+  set technician(technician: string) { this._technician = technician; }
+  set serviceFee(fee: number) { this._serviceFee = Math.max(0, fee); }
 
-  /** Pencocokan untuk kolom pencarian. */
-  cocok(kataKunci: string): boolean {
-    const q = kataKunci.trim().toLowerCase();
+  /** Match for the search box. */
+  matches(keyword: string): boolean {
+    const q = keyword.trim().toLowerCase();
     if (!q) return true;
-    return this._pelanggan.toLowerCase().includes(q) || this._nomor.toLowerCase().includes(q);
+    return this._customer.toLowerCase().includes(q) || this._number.toLowerCase().includes(q);
   }
 
-  /** Serialisasi untuk penyimpanan lokal. */
+  /** Serialize for local storage. */
   toJSON(): ServiceOrderJSON {
     return {
       id: this.id,
-      nomor: this._nomor,
-      pelanggan: this._pelanggan,
-      telepon: this._telepon,
-      alamat: this._alamat,
-      jenisUnit: this._jenisUnit,
-      merk: this._merk,
+      number: this._number,
+      customer: this._customer,
+      phone: this._phone,
+      address: this._address,
+      unitType: this._unitType,
+      brand: this._brand,
       model: this._model,
-      nomorSeri: this._nomorSeri,
-      kelengkapan: [...this._kelengkapan],
-      keluhan: this._keluhan,
-      diagnosa: this._diagnosa,
-      teknisi: this._teknisi,
-      prioritas: this._prioritas,
+      serialNo: this._serialNo,
+      accessories: [...this._accessories],
+      complaint: this._complaint,
+      diagnosis: this._diagnosis,
+      technician: this._technician,
+      priority: this._priority,
       status: this._status,
-      tanggalMasuk: this._tanggalMasuk.toISOString(),
-      biayaJasa: this._biayaJasa,
-      sparepart: this._sparepart.map((part) => ({
+      receivedAt: this._receivedAt.toISOString(),
+      serviceFee: this._serviceFee,
+      parts: this._parts.map((part) => ({
         id: part.id,
-        barangId: part.barangId,
-        nama: part.nama,
-        jumlah: part.jumlah,
-        harga: part.harga,
+        productId: part.productId,
+        name: part.name,
+        quantity: part.quantity,
+        price: part.price,
       })),
-      riwayat: this._riwayat.map((log) => ({ status: log.status, pada: log.pada.toISOString() })),
+      history: this._history.map((log) => ({ status: log.status, at: log.at.toISOString() })),
     };
   }
 
-  static dariJSON(data: ServiceOrderJSON): ServiceOrder {
+  static fromJSON(data: ServiceOrderJSON): ServiceOrder {
     return new ServiceOrder({
       ...data,
-      tanggalMasuk: new Date(data.tanggalMasuk),
-      sparepart: data.sparepart.map(
-        (part) => new SparepartTerpakai(part.id, part.barangId, part.nama, part.jumlah, part.harga),
+      receivedAt: new Date(data.receivedAt),
+      parts: data.parts.map(
+        (part) => new ServicePart(part.id, part.productId, part.name, part.quantity, part.price),
       ),
-      riwayat: data.riwayat.map((log) => new RiwayatStatus(log.status, new Date(log.pada))),
+      history: data.history.map((log) => new StatusLog(log.status, new Date(log.at))),
     });
   }
 }
 
 export interface ServiceOrderJSON {
   id: string;
-  nomor: string;
-  pelanggan: string;
-  telepon: string;
-  alamat?: string;
-  jenisUnit: string;
-  merk: string;
+  number: string;
+  customer: string;
+  phone: string;
+  address?: string;
+  unitType: string;
+  brand: string;
   model?: string;
-  nomorSeri?: string;
-  kelengkapan: string[];
-  keluhan: string;
-  diagnosa?: string;
-  teknisi: string;
-  prioritas: PrioritasService;
-  status: StatusService;
-  tanggalMasuk: string;
-  biayaJasa: number;
-  sparepart: { id: string; barangId: string; nama: string; jumlah: number; harga: number }[];
-  riwayat: { status: StatusService; pada: string }[];
+  serialNo?: string;
+  accessories: string[];
+  complaint: string;
+  diagnosis?: string;
+  technician: string;
+  priority: ServicePriority;
+  status: ServiceStatus;
+  receivedAt: string;
+  serviceFee: number;
+  parts: { id: string; productId: string; name: string; quantity: number; price: number }[];
+  history: { status: ServiceStatus; at: string }[];
 }

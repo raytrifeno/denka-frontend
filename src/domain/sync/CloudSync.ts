@@ -1,12 +1,12 @@
 import { cloudReady, getCloud } from "./supabase-client";
 import { Database } from "../Database";
-import { PenyimpananLokal } from "../persistence/PenyimpananLokal";
+import { LocalStore } from "../persistence/LocalStore";
 import { snapshotToTables, tablesToSnapshot, type CloudTables } from "./mapping";
 
-const KUNCI_PENGATURAN = "denka-pengaturan";
+const KEY_SETTINGS = "denka-settings";
 
 /** Urutan tabel yang disinkronkan (nama kolom & tabel dalam bahasa Inggris). */
-const TABEL: (keyof CloudTables)[] = [
+const TABLES: (keyof CloudTables)[] = [
   "users",
   "suppliers",
   "products",
@@ -18,33 +18,33 @@ const TABEL: (keyof CloudTables)[] = [
   "stock_movements",
 ];
 
-export interface HasilSync {
-  sukses: boolean;
-  pesan: string;
+export interface SyncResult {
+  success: boolean;
+  message: string;
 }
 
-export interface StatusSync {
-  siap: boolean;
-  sinkron: boolean;
-  terakhirBackup: string | null;
+export interface SyncStatus {
+  ready: boolean;
+  syncing: boolean;
+  lastBackup: string | null;
 }
 
-const KUNCI_TERAKHIR = "denka-backup-terakhir";
+const KEY_LAST_BACKUP = "denka-last-backup";
 
-let sedangRestore = false;
-let sedangBackup = false;
-let terakhirBackup: string | null = null;
-let timerAuto: ReturnType<typeof setTimeout> | null = null;
-const pendengar = new Set<() => void>();
+let restoring = false;
+let backingUp = false;
+let lastBackup: string | null = null;
+let autoTimer: ReturnType<typeof setTimeout> | null = null;
+const listeners = new Set<() => void>();
 
-let statusCache: StatusSync = { siap: cloudReady, sinkron: false, terakhirBackup: null };
+let statusCache: SyncStatus = { ready: cloudReady, syncing: false, lastBackup: null };
 
-function beriTahu(): void {
-  statusCache = { siap: cloudReady, sinkron: sedangBackup, terakhirBackup };
-  pendengar.forEach((cb) => cb());
+function notify(): void {
+  statusCache = { ready: cloudReady, syncing: backingUp, lastBackup };
+  listeners.forEach((cb) => cb());
 }
 
-function pesanError(error: unknown): string {
+function errorMessage(error: unknown): string {
   if (error && typeof error === "object" && "message" in error) {
     return String((error as { message: unknown }).message);
   }
@@ -52,117 +52,117 @@ function pesanError(error: unknown): string {
 }
 
 /** Buat tabel cloud mengikuti data lokal: upsert baris lokal, hapus sisanya. */
-async function mirror(tabel: string, baris: { id: string }[]): Promise<void> {
+async function mirror(table: string, rows: { id: string }[]): Promise<void> {
   const cloud = getCloud();
   if (!cloud) return;
 
-  if (baris.length) {
-    const { error } = await cloud.from(tabel).upsert(baris);
+  if (rows.length) {
+    const { error } = await cloud.from(table).upsert(rows);
     if (error) throw error;
   }
 
-  const hapus = cloud.from(tabel).delete();
-  const kueri = baris.length
-    ? hapus.not("id", "in", `(${baris.map((row) => row.id).join(",")})`)
-    : hapus.neq("id", "__none__");
-  const { error } = await kueri;
+  const del = cloud.from(table).delete();
+  const query = rows.length
+    ? del.not("id", "in", `(${rows.map((row) => row.id).join(",")})`)
+    : del.neq("id", "__none__");
+  const { error } = await query;
   if (error) throw error;
 }
 
 export const CloudSync = {
-  get siap(): boolean {
+  get ready(): boolean {
     return cloudReady;
   },
 
   /** Status terkini untuk indikator di UI (objek stabil untuk useSyncExternalStore). */
-  get status(): StatusSync {
+  get status(): SyncStatus {
     return statusCache;
   },
 
   /** Berlangganan perubahan status (dipakai indikator sync). */
   subscribe(cb: () => void): () => void {
-    pendengar.add(cb);
-    return () => pendengar.delete(cb);
+    listeners.add(cb);
+    return () => listeners.delete(cb);
   },
 
   /** Backup (push): cloud menjadi cermin dari data lokal. */
-  async backup(): Promise<HasilSync> {
+  async backup(): Promise<SyncResult> {
     const cloud = getCloud();
-    if (!cloud) return { sukses: false, pesan: "Supabase belum dikonfigurasi." };
+    if (!cloud) return { success: false, message: "Supabase belum dikonfigurasi." };
 
-    sedangBackup = true;
-    beriTahu();
+    backingUp = true;
+    notify();
     try {
-      const tables = snapshotToTables(Database.getInstance().ambilSnapshot());
-      for (const nama of TABEL) {
-        await mirror(nama, tables[nama]);
+      const tables = snapshotToTables(Database.getInstance().takeSnapshot());
+      for (const name of TABLES) {
+        await mirror(name, tables[name]);
       }
 
-      const pengaturan = PenyimpananLokal.muat<unknown>(KUNCI_PENGATURAN);
-      if (pengaturan) {
+      const settings = LocalStore.load<unknown>(KEY_SETTINGS);
+      if (settings) {
         const { error } = await cloud
           .from("settings")
-          .upsert({ key: KUNCI_PENGATURAN, value: JSON.stringify(pengaturan) });
+          .upsert({ key: KEY_SETTINGS, value: JSON.stringify(settings) });
         if (error) throw error;
       }
 
-      terakhirBackup = new Date().toISOString();
-      PenyimpananLokal.simpan(KUNCI_TERAKHIR, terakhirBackup);
-      return { sukses: true, pesan: "Backup ke cloud berhasil." };
+      lastBackup = new Date().toISOString();
+      LocalStore.save(KEY_LAST_BACKUP, lastBackup);
+      return { success: true, message: "Backup ke cloud berhasil." };
     } catch (error) {
-      return { sukses: false, pesan: pesanError(error) };
+      return { success: false, message: errorMessage(error) };
     } finally {
-      sedangBackup = false;
-      beriTahu();
+      backingUp = false;
+      notify();
     }
   },
 
   /** Restore (pull): ganti seluruh data lokal dengan isi cloud. */
-  async restore(): Promise<HasilSync> {
+  async restore(): Promise<SyncResult> {
     const cloud = getCloud();
-    if (!cloud) return { sukses: false, pesan: "Supabase belum dikonfigurasi." };
+    if (!cloud) return { success: false, message: "Supabase belum dikonfigurasi." };
 
-    sedangRestore = true;
+    restoring = true;
     try {
-      const hasil: Record<string, unknown[]> = {};
-      for (const nama of TABEL) {
-        const { data, error } = await cloud.from(nama).select("*");
+      const result: Record<string, unknown[]> = {};
+      for (const name of TABLES) {
+        const { data, error } = await cloud.from(name).select("*");
         if (error) throw error;
-        hasil[nama] = data ?? [];
+        result[name] = data ?? [];
       }
-      Database.getInstance().gantiSemua(tablesToSnapshot(hasil as unknown as CloudTables));
+      Database.getInstance().replaceAll(tablesToSnapshot(result as unknown as CloudTables));
 
       const { data: setting, error } = await cloud
         .from("settings")
         .select("value")
-        .eq("key", KUNCI_PENGATURAN)
+        .eq("key", KEY_SETTINGS)
         .maybeSingle();
       if (error) throw error;
       if (setting?.value) {
         try {
-          PenyimpananLokal.simpan(KUNCI_PENGATURAN, JSON.parse(setting.value));
+          LocalStore.save(KEY_SETTINGS, JSON.parse(setting.value));
         } catch {
           // format tak terbaca — biarkan pengaturan lokal apa adanya
         }
       }
 
-      return { sukses: true, pesan: "Data berhasil dipulihkan dari cloud." };
+      return { success: true, message: "Data berhasil dipulihkan dari cloud." };
     } catch (error) {
-      return { sukses: false, pesan: pesanError(error) };
+      return { success: false, message: errorMessage(error) };
     } finally {
-      sedangRestore = false;
+      restoring = false;
     }
   },
 
   /** Backup otomatis (debounce) setiap ada perubahan saat perangkat online. */
-  aktifkanAutoBackup(): void {
+  enableAutoBackup(): void {
     if (!cloudReady) return;
-    terakhirBackup = PenyimpananLokal.muat<string>(KUNCI_TERAKHIR);
-    beriTahu();
+    lastBackup = LocalStore.load<string>(KEY_LAST_BACKUP);
+    notify();
     Database.getInstance().onChange(() => {
-      if (sedangRestore || !navigator.onLine) return;
-      if (timerAuto) clearTimeout(timerAuto);
-      timerAuto = setTimeout(() => {
+      if (restoring || !navigator.onLine) return;
+      if (autoTimer) clearTimeout(autoTimer);
+      autoTimer = setTimeout(() => {
         void CloudSync.backup();
       }, 3000);
     });

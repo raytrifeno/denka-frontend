@@ -51,11 +51,11 @@ export function Login({ onLogin }: LoginProps) {
     setLoading(true);
     // Simulasi jeda request, lalu serahkan autentikasi ke AuthController.
     window.setTimeout(() => {
-      const hasil = auth.login(username, password, remember);
-      if (hasil.sukses) {
+      const result = auth.login(username, password, remember);
+      if (result.success) {
         onLogin();
       } else {
-        setFormError(hasil.pesan ?? "Username atau password salah.");
+        setFormError(result.message ?? "Username atau password salah.");
         setLoading(false);
       }
     }, 800);

@@ -16,13 +16,13 @@ export function useSyncStatus() {
   );
 
   useEffect(() => {
-    const naik = () => setOnline(true);
-    const turun = () => setOnline(false);
-    window.addEventListener("online", naik);
-    window.addEventListener("offline", turun);
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
     return () => {
-      window.removeEventListener("online", naik);
-      window.removeEventListener("offline", turun);
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
     };
   }, []);
 

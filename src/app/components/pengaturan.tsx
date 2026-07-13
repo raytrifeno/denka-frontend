@@ -61,8 +61,8 @@ import {
   type WhatsAppState,
 } from "../share";
 import { AuthController } from "../../domain/controllers/AuthController";
-import { PenggunaController } from "../../domain/controllers/PenggunaController";
-import { PengaturanController } from "../../domain/controllers/PengaturanController";
+import { UserController } from "../../domain/controllers/UserController";
+import { SettingsController } from "../../domain/controllers/SettingsController";
 import { CloudSync } from "../../domain/sync/CloudSync";
 import { exportToExcel } from "../../domain/export/ExcelExport";
 import { useController } from "../hooks/use-controller";
@@ -80,7 +80,7 @@ const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
 
 /**
  * Pengaturan — boundary class preferensi aplikasi.
- * Semua nilai dibaca/disimpan lewat PengaturanController (persisten di
+ * Semua nilai dibaca/disimpan lewat SettingsController (persisten di
  * penyimpanan lokal); tab Akun terhubung ke pengguna yang sedang login.
  */
 export function Pengaturan() {
@@ -122,12 +122,12 @@ export function Pengaturan() {
 
           {/* content */}
           <div className="min-w-0 flex-1 p-5 sm:p-6">
-            {tab === "toko" && <ProfilToko />}
-            {tab === "struk" && <PengaturanStruk />}
-            {tab === "whatsapp" && <IntegrasiWhatsApp />}
-            {tab === "kategori" && <KategoriBarang />}
-            {tab === "akun" && <AkunSaya />}
-            {tab === "data" && <DataCadangan />}
+            {tab === "toko" && <StoreProfileSection />}
+            {tab === "struk" && <ReceiptSection />}
+            {tab === "whatsapp" && <WhatsAppSection />}
+            {tab === "kategori" && <CategorySection />}
+            {tab === "akun" && <AccountSection />}
+            {tab === "data" && <BackupSection />}
           </div>
         </div>
       </div>
@@ -168,12 +168,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // ---------- 1. Profil Toko ----------
-function ProfilToko() {
-  const controller = PengaturanController.getInstance();
-  const [store, setStore] = useState(controller.toko);
+function StoreProfileSection() {
+  const controller = SettingsController.getInstance();
+  const [store, setStore] = useState(controller.store);
 
   function save() {
-    controller.setToko(store);
+    controller.setStore(store);
     toast.success("Profil toko disimpan");
   }
 
@@ -196,13 +196,13 @@ function ProfilToko() {
           </div>
         </Field>
         <Field label="Nama Toko">
-          <Input value={store.nama} onChange={(e) => setStore({ ...store, nama: e.target.value })} className="bg-input-background" />
+          <Input value={store.name} onChange={(e) => setStore({ ...store, name: e.target.value })} className="bg-input-background" />
         </Field>
         <Field label="Alamat">
-          <Textarea value={store.alamat} onChange={(e) => setStore({ ...store, alamat: e.target.value })} className="min-h-20 bg-input-background" />
+          <Textarea value={store.address} onChange={(e) => setStore({ ...store, address: e.target.value })} className="min-h-20 bg-input-background" />
         </Field>
         <Field label="No. Telepon">
-          <Input value={store.telepon} onChange={(e) => setStore({ ...store, telepon: e.target.value })} className="bg-input-background" />
+          <Input value={store.phone} onChange={(e) => setStore({ ...store, phone: e.target.value })} className="bg-input-background" />
         </Field>
       </div>
       <SaveBar onSave={save} />
@@ -211,14 +211,14 @@ function ProfilToko() {
 }
 
 // ---------- 2. Pengaturan Struk ----------
-function PengaturanStruk() {
-  const controller = PengaturanController.getInstance();
+function ReceiptSection() {
+  const controller = SettingsController.getInstance();
   useController(controller);
-  const [struk, setStruk] = useState(controller.struk);
-  const toko = controller.toko;
+  const [receipt, setReceipt] = useState(controller.receipt);
+  const store = controller.store;
 
   function save() {
-    controller.setStruk(struk);
+    controller.setReceipt(receipt);
     toast.success("Pengaturan struk disimpan");
   }
 
@@ -231,17 +231,17 @@ function PengaturanStruk() {
           <ToggleRow
             title="Tampilkan Logo"
             desc="Tampilkan logo toko di bagian atas struk."
-            checked={struk.tampilkanLogo}
-            onChange={(v) => setStruk({ ...struk, tampilkanLogo: v })}
+            checked={receipt.showLogo}
+            onChange={(v) => setReceipt({ ...receipt, showLogo: v })}
           />
           <ToggleRow
             title="Tampilkan Alamat"
             desc="Tampilkan alamat & telepon toko pada struk."
-            checked={struk.tampilkanAlamat}
-            onChange={(v) => setStruk({ ...struk, tampilkanAlamat: v })}
+            checked={receipt.showAddress}
+            onChange={(v) => setReceipt({ ...receipt, showAddress: v })}
           />
           <Field label="Teks Footer Struk">
-            <Input value={struk.footer} onChange={(e) => setStruk({ ...struk, footer: e.target.value })} placeholder="Contoh: Terima kasih telah berbelanja" className="bg-input-background" />
+            <Input value={receipt.footer} onChange={(e) => setReceipt({ ...receipt, footer: e.target.value })} placeholder="Contoh: Terima kasih telah berbelanja" className="bg-input-background" />
           </Field>
         </div>
 
@@ -249,15 +249,15 @@ function PengaturanStruk() {
         <div>
           <p className="mb-2 text-sm text-muted-foreground">Preview Struk</p>
           <div className="mx-auto max-w-xs rounded-lg border border-dashed border-border bg-background p-4 text-center">
-            {struk.tampilkanLogo && (
+            {receipt.showLogo && (
               <div className="mx-auto mb-2 flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Laptop className="size-5" />
               </div>
             )}
-            <p className="text-sm">{toko.nama}</p>
-            {struk.tampilkanAlamat && (
+            <p className="text-sm">{store.name}</p>
+            {receipt.showAddress && (
               <p className="text-xs text-muted-foreground">
-                {toko.alamat}<br />{toko.telepon}
+                {store.address}<br />{store.phone}
               </p>
             )}
             <div className="my-2 border-t border-dashed border-border" />
@@ -268,7 +268,7 @@ function PengaturanStruk() {
             <div className="my-2 border-t border-dashed border-border" />
             <div className="flex justify-between text-sm"><span>Total</span><span className="tnum">Rp 1.050.000</span></div>
             <div className="my-2 border-t border-dashed border-border" />
-            <p className="text-xs text-muted-foreground">{struk.footer || "—"}</p>
+            <p className="text-xs text-muted-foreground">{receipt.footer || "—"}</p>
           </div>
         </div>
       </div>
@@ -309,12 +309,12 @@ const WA_STATUS_META: Record<WhatsAppState, { label: string; desc: string }> = {
   auth_failure: { label: "Gagal autentikasi", desc: "Coba hubungkan lagi." },
 };
 
-function IntegrasiWhatsApp() {
-  const controller = PengaturanController.getInstance();
-  const awal = controller.whatsapp;
-  const [enabled, setEnabled] = useState(awal.aktif);
-  const [template, setTemplate] = useState(awal.template);
-  const [serverUrl, setServerUrl] = useState(awal.serverUrl ?? "");
+function WhatsAppSection() {
+  const controller = SettingsController.getInstance();
+  const initial = controller.whatsapp;
+  const [enabled, setEnabled] = useState(initial.enabled);
+  const [template, setTemplate] = useState(initial.template);
+  const [serverUrl, setServerUrl] = useState(initial.serverUrl ?? "");
   const ref = useRef<HTMLTextAreaElement>(null);
 
   const [status, setStatus] = useState<{ state: WhatsAppState; qr: string | null }>({
@@ -348,22 +348,22 @@ function IntegrasiWhatsApp() {
     }
   }, [connected, qrOpen]);
 
-  async function putuskan() {
+  async function disconnect() {
     await logoutWhatsApp();
     setStatus({ state: "loading", qr: null });
     toast.success("WhatsApp diputuskan.");
   }
 
-  async function testKirim() {
-    const nomor = controller.toko.telepon;
-    if (!nomor) {
+  async function sendTest() {
+    const phone = controller.store.phone;
+    if (!phone) {
       toast.error("Isi No. Telepon toko di Profil Toko dulu.");
       return;
     }
     setTesting(true);
     try {
-      await sendReceiptWhatsApp(nomor, `Tes koneksi WhatsApp dari ${controller.toko.nama || "Denka"}.`);
-      toast.success(`Pesan tes terkirim ke ${nomor}.`);
+      await sendReceiptWhatsApp(phone, `Tes koneksi WhatsApp dari ${controller.store.name || "Denka"}.`);
+      toast.success(`Pesan tes terkirim ke ${phone}.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal mengirim pesan tes.");
     } finally {
@@ -392,7 +392,7 @@ function IntegrasiWhatsApp() {
   }
 
   function save() {
-    controller.setWhatsApp({ aktif: enabled, template, serverUrl: serverUrl.trim() });
+    controller.setWhatsApp({ enabled, template, serverUrl: serverUrl.trim() });
     toast.success("Pengaturan WhatsApp disimpan");
   }
 
@@ -417,7 +417,7 @@ function IntegrasiWhatsApp() {
             </div>
           </div>
           {connected ? (
-            <Button variant="outline" size="sm" className="shrink-0" onClick={putuskan}>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={disconnect}>
               <Unplug className="size-4" />
               Putuskan
             </Button>
@@ -481,7 +481,7 @@ function IntegrasiWhatsApp() {
             </div>
           </div>
 
-          <Button variant="outline" onClick={testKirim} disabled={testing || !connected}>
+          <Button variant="outline" onClick={sendTest} disabled={testing || !connected}>
             {testing ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             Test Kirim Pesan
           </Button>
@@ -539,18 +539,18 @@ function IntegrasiWhatsApp() {
 }
 
 // ---------- 4. Kategori Barang ----------
-function KategoriBarang() {
-  const controller = PengaturanController.getInstance();
+function CategorySection() {
+  const controller = SettingsController.getInstance();
   useController(controller);
   const [input, setInput] = useState("");
 
-  const inti = ["Laptop", "PC & Komponen", "Aksesoris", "Sparepart", "Lainnya"];
-  const tambahan = controller.kategoriTambahan;
+  const coreCategories = ["Laptop", "PC & Komponen", "Aksesoris", "Sparepart", "Lainnya"];
+  const extras = controller.extraCategories;
 
   function add() {
-    const hasil = controller.tambahKategori(input);
-    if (!hasil.sukses) {
-      toast.error(hasil.pesan ?? "Gagal menambah kategori");
+    const result = controller.addCategory(input);
+    if (!result.success) {
+      toast.error(result.message ?? "Gagal menambah kategori");
       return;
     }
     setInput("");
@@ -562,7 +562,7 @@ function KategoriBarang() {
       <div className="space-y-4">
         <Field label="Kategori Inti">
           <div className="flex flex-wrap gap-2">
-            {inti.map((c) => (
+            {coreCategories.map((c) => (
               <Badge key={c} variant="secondary" className="py-1 px-3">{c}</Badge>
             ))}
           </div>
@@ -570,15 +570,15 @@ function KategoriBarang() {
 
         <Field label="Kategori Tambahan">
           <div className="flex flex-wrap gap-2">
-            {tambahan.length === 0 ? (
+            {extras.length === 0 ? (
               <p className="text-sm text-muted-foreground">Belum ada kategori tambahan.</p>
             ) : (
-              tambahan.map((c) => (
+              extras.map((c) => (
                 <Badge key={c} variant="secondary" className="gap-1 py-1 pl-3 pr-1.5">
                   {c}
                   <button
                     type="button"
-                    onClick={() => controller.hapusKategori(c)}
+                    onClick={() => controller.removeCategory(c)}
                     aria-label={`Hapus ${c}`}
                     className="flex size-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
                   >
@@ -611,26 +611,26 @@ function KategoriBarang() {
 }
 
 // ---------- 5. Akun Saya ----------
-function AkunSaya() {
+function AccountSection() {
   const auth = AuthController.getInstance();
-  const penggunaCtrl = PenggunaController.getInstance();
+  const userCtrl = UserController.getInstance();
   useController(auth);
 
-  const pengguna = auth.penggunaAktif;
+  const user = auth.currentUser;
   const [profile, setProfile] = useState({
-    nama: pengguna?.nama ?? "",
-    username: pengguna?.username ?? "",
-    email: pengguna?.email ?? "",
+    name: user?.name ?? "",
+    username: user?.username ?? "",
+    email: user?.email ?? "",
   });
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [show, setShow] = useState(false);
 
-  if (!pengguna) return null;
+  if (!user) return null;
 
   function save() {
-    if (!pengguna) return;
+    if (!user) return;
     if (pw.next) {
-      if (!pengguna.cekPassword(pw.current)) {
+      if (!user.checkPassword(pw.current)) {
         toast.error("Password saat ini salah");
         return;
       }
@@ -639,20 +639,20 @@ function AkunSaya() {
         return;
       }
     }
-    const hasil = penggunaCtrl.simpan(
+    const result = userCtrl.save(
       {
-        nama: profile.nama,
+        name: profile.name,
         username: profile.username,
         email: profile.email,
         password: pw.next,
-        role: pengguna.role,
-        aktif: pengguna.aktif,
+        role: user.role,
+        active: user.active,
       },
-      pengguna.id,
+      user.id,
     );
-    if (!hasil.sukses) {
-      const pertama = Object.values(hasil.errors)[0];
-      toast.error(pertama ?? "Gagal menyimpan profil");
+    if (!result.success) {
+      const first = Object.values(result.errors)[0];
+      toast.error(first ?? "Gagal menyimpan profil");
       return;
     }
     setPw({ current: "", next: "", confirm: "" });
@@ -667,7 +667,7 @@ function AkunSaya() {
         <div className="flex items-center gap-4">
           <Avatar className="size-16">
             <AvatarFallback className="bg-primary text-primary-foreground">
-              {pengguna.inisial()}
+              {user.initials()}
             </AvatarFallback>
           </Avatar>
           <button
@@ -681,7 +681,7 @@ function AkunSaya() {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Nama Lengkap">
-            <Input value={profile.nama} onChange={(e) => setProfile({ ...profile, nama: e.target.value })} className="bg-input-background" />
+            <Input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} className="bg-input-background" />
           </Field>
           <Field label="Username">
             <Input value={profile.username} onChange={(e) => setProfile({ ...profile, username: e.target.value })} className="bg-input-background" />
@@ -736,35 +736,35 @@ function PasswordInput({
 }
 
 // ---------- 6. Data & Cadangan ----------
-function DataCadangan() {
-  const controller = PengaturanController.getInstance();
+function BackupSection() {
+  const controller = SettingsController.getInstance();
   const [sibuk, setSibuk] = useState<"backup" | "restore" | "ekspor" | null>(null);
 
   async function ekspor() {
     setSibuk("ekspor");
-    const hasil = await exportToExcel();
+    const result = await exportToExcel();
     setSibuk(null);
-    if (hasil.sukses) toast.success(hasil.pesan);
-    else toast.error(hasil.pesan);
+    if (result.success) toast.success(result.message);
+    else toast.error(result.message);
   }
 
   async function backup() {
     setSibuk("backup");
-    const hasil = await CloudSync.backup();
+    const result = await CloudSync.backup();
     setSibuk(null);
-    if (hasil.sukses) toast.success(hasil.pesan);
-    else toast.error(hasil.pesan);
+    if (result.success) toast.success(result.message);
+    else toast.error(result.message);
   }
 
   async function restore() {
     setSibuk("restore");
-    const hasil = await CloudSync.restore();
-    if (!hasil.sukses) {
+    const result = await CloudSync.restore();
+    if (!result.success) {
       setSibuk(null);
-      toast.error(hasil.pesan);
+      toast.error(result.message);
       return;
     }
-    toast.success(hasil.pesan);
+    toast.success(result.message);
     // muat ulang agar seluruh controller membaca data terbaru dari lokal
     setTimeout(() => window.location.reload(), 800);
   }
@@ -815,7 +815,7 @@ function DataCadangan() {
           </Button>
         </div>
 
-        {CloudSync.siap ? (
+        {CloudSync.ready ? (
           <>
             <div className="flex flex-col gap-3 rounded-lg border border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -924,7 +924,7 @@ function DataCadangan() {
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   onClick={() => {
-                    controller.resetDataDemo();
+                    controller.resetDemoData();
                     toast.success("Data dikembalikan ke kondisi awal");
                   }}
                 >
@@ -946,7 +946,7 @@ function DataCadangan() {
             variant="outline"
             size="sm"
             onClick={() => {
-              controller.resetPengaturan();
+              controller.resetSettings();
               toast.success("Pengaturan dikembalikan ke bawaan");
             }}
           >

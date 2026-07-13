@@ -13,14 +13,14 @@ export abstract class Entity {
     return this._id;
   }
 
-  sama(lain: Entity): boolean {
-    return this._id === lain.id;
+  equals(other: Entity): boolean {
+    return this._id === other.id;
   }
 }
 
 /** Pembuat id unik sederhana untuk entity baru (pengganti auto-increment database). */
 let counter = 0;
-export function buatId(prefix: string): string {
+export function createId(prefix: string): string {
   counter++;
   return `${prefix}-${Date.now().toString(36)}-${counter}`;
 }

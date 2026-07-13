@@ -36,9 +36,9 @@ import {
 } from "./ui/select";
 import { cn } from "./ui/utils";
 import type { Role } from "../navigation";
-import type { KategoriBarang } from "../../domain/entities/Barang";
-import type { StatusService } from "../../domain/entities/ServiceOrder";
-import { LaporanController } from "../../domain/controllers/LaporanController";
+import type { ProductCategory } from "../../domain/entities/Product";
+import type { ServiceStatus } from "../../domain/entities/ServiceOrder";
+import { ReportController } from "../../domain/controllers/ReportController";
 import { useController } from "../hooks/use-controller";
 
 type DashboardProps = {
@@ -48,10 +48,10 @@ type DashboardProps = {
 
 const rupiah = (n: number) => "Rp " + n.toLocaleString("id-ID");
 
-const CAT_LABEL: Record<KategoriBarang, string> = {
+const CAT_LABEL: Record<ProductCategory, string> = {
   laptop: "Laptop", pc: "PC & Komponen", aksesoris: "Aksesoris", sparepart: "Sparepart", lainnya: "Lainnya",
 };
-const CAT_TINT: Record<KategoriBarang, string> = {
+const CAT_TINT: Record<ProductCategory, string> = {
   laptop: "bg-primary-100 text-primary-700",
   pc: "bg-primary-100 text-primary-500",
   aksesoris: "bg-amber-100 text-amber",
@@ -59,7 +59,7 @@ const CAT_TINT: Record<KategoriBarang, string> = {
   lainnya: "bg-muted text-muted-foreground",
 };
 
-const SVC_BADGE: Record<StatusService, { label: string; className: string }> = {
+const SVC_BADGE: Record<ServiceStatus, { label: string; className: string }> = {
   antri: { label: "Antri", className: "bg-muted text-muted-foreground" },
   diperiksa: { label: "Diperiksa", className: "bg-primary-100 text-primary-500" },
   dikerjakan: { label: "Dikerjakan", className: "bg-amber-100 text-amber" },
@@ -76,25 +76,25 @@ const PERIODS = [
 
 /**
  * Dashboard — boundary class ringkasan toko.
- * Seluruh angka dihitung LaporanController dari data transaksi, service,
+ * Seluruh angka dihitung ReportController dari data transaksi, service,
  * stok, dan mutasi yang sama dengan modul lain (tidak ada data tiruan).
  */
 export function Dashboard({ role, onNavigate }: DashboardProps) {
-  const laporan = LaporanController.getInstance();
-  useController(laporan);
+  const report = ReportController.getInstance();
+  useController(report);
 
   const [period, setPeriod] = useState("hari");
   const today = new Date().toLocaleDateString("id-ID", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
 
-  const tren = laporan.trenVsKemarin();
-  const stokMenipis = laporan.stokMenipis();
-  const seminggu = new Date();
-  seminggu.setDate(seminggu.getDate() - 6);
-  const topProducts = laporan.barangTerlaris(5, seminggu, new Date());
-  const recentServices = laporan.serviceTerbaru(5);
-  const attention = laporan.perluPerhatian();
+  const trend = report.trendVsYesterday();
+  const lowStock = report.lowStock();
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 6);
+  const topProducts = report.topProducts(5, weekAgo, new Date());
+  const recentServices = report.recentServices(5);
+  const attention = report.needsAttention();
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
@@ -122,12 +122,12 @@ export function Dashboard({ role, onNavigate }: DashboardProps) {
         {role === "pemilik" ? (
           <KpiCard
             icon={Wallet} tone="primary" label="Penjualan Hari Ini"
-            value={rupiah(laporan.penjualanHariIni())}
+            value={rupiah(report.todaySales())}
             context={
-              tren ? (
-                <span className={cn("flex items-center gap-1", tren.naik ? "text-success" : "text-destructive")}>
-                  {tren.naik ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
-                  {tren.persen} vs kemarin
+              trend ? (
+                <span className={cn("flex items-center gap-1", trend.up ? "text-success" : "text-destructive")}>
+                  {trend.up ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
+                  {trend.percent} vs kemarin
                 </span>
               ) : (
                 "belum ada pembanding kemarin"
@@ -138,7 +138,7 @@ export function Dashboard({ role, onNavigate }: DashboardProps) {
         ) : (
           <KpiCard
             icon={Receipt} tone="primary" label="Transaksi Hari Ini"
-            value={String(laporan.jumlahTransaksiHariIni())}
+            value={String(report.todaySaleCount())}
             context="nota tercatat sejak buka"
             onClick={() => onNavigate("pos")}
           />
@@ -146,28 +146,28 @@ export function Dashboard({ role, onNavigate }: DashboardProps) {
         {role === "pemilik" ? (
           <KpiCard
             icon={Receipt} tone="info" label="Transaksi Hari Ini"
-            value={String(laporan.jumlahTransaksiHariIni())}
+            value={String(report.todaySaleCount())}
             context="nota tercatat sejak buka"
             onClick={() => onNavigate("pos")}
           />
         ) : (
           <KpiCard
             icon={Wrench} tone="info" label="Service Selesai Hari Ini"
-            value={`${laporan.serviceSelesaiHariIni()} unit`}
+            value={`${report.servicesCompletedToday()} unit`}
             context="siap dikabari ke pelanggan"
             onClick={() => onNavigate("service")}
           />
         )}
         <KpiCard
           icon={Wrench} tone="amber" label="Service Berjalan"
-          value={`${laporan.serviceBerjalan()} unit`}
+          value={`${report.servicesInProgress()} unit`}
           context="tiket aktif di papan service"
           onClick={() => onNavigate("service")}
         />
         <KpiCard
           icon={AlertTriangle} tone="amber" label="Stok Menipis"
-          value={`${stokMenipis.length} item`}
-          context={stokMenipis.length > 0 ? "di bawah batas minimum — cek stok" : "semua stok di atas batas aman"}
+          value={`${lowStock.length} item`}
+          context={lowStock.length > 0 ? "di bawah batas minimum — cek stok" : "semua stok di atas batas aman"}
           onClick={() => onNavigate("stok")}
         />
       </div>
@@ -181,7 +181,7 @@ export function Dashboard({ role, onNavigate }: DashboardProps) {
           <CardContent>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={laporan.trenPenjualan(7).map((t) => ({ day: t.label, total: t.total }))} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <AreaChart data={report.salesTrend(7).map((t) => ({ day: t.label, total: t.total }))} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#1E3A5F" stopOpacity={0.22} />
@@ -229,17 +229,17 @@ export function Dashboard({ role, onNavigate }: DashboardProps) {
               <p className="py-6 text-center text-sm text-muted-foreground">Belum ada penjualan minggu ini.</p>
             ) : (
               topProducts.map((p) => (
-                <div key={p.nama} className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
+                <div key={p.name} className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
                   <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                     <Package2 className="size-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-foreground">{p.nama}</p>
-                    <Badge className={cn("mt-0.5 border-0", CAT_TINT[p.kategori])}>{CAT_LABEL[p.kategori]}</Badge>
+                    <p className="truncate text-foreground">{p.name}</p>
+                    <Badge className={cn("mt-0.5 border-0", CAT_TINT[p.category])}>{CAT_LABEL[p.category]}</Badge>
                   </div>
                   <div className="text-right">
-                    <p className="tnum font-semibold text-foreground">{p.terjual} terjual</p>
-                    <p className="tnum text-xs text-muted-foreground">{rupiah(p.pendapatan)}</p>
+                    <p className="tnum font-semibold text-foreground">{p.sold} terjual</p>
+                    <p className="tnum text-xs text-muted-foreground">{rupiah(p.revenue)}</p>
                   </div>
                 </div>
               ))
@@ -255,8 +255,8 @@ export function Dashboard({ role, onNavigate }: DashboardProps) {
               return (
                 <div key={s.id} className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-foreground">{s.pelanggan}</p>
-                    <p className="truncate text-xs text-muted-foreground">{s.jenisUnit} {s.merk}</p>
+                    <p className="truncate text-foreground">{s.customer}</p>
+                    <p className="truncate text-xs text-muted-foreground">{s.unitType} {s.brand}</p>
                   </div>
                   <Badge className={cn("border-0", meta.className)}>{meta.label}</Badge>
                   <Button variant="outline" size="sm" onClick={() => onNavigate("service")}>
@@ -270,7 +270,7 @@ export function Dashboard({ role, onNavigate }: DashboardProps) {
       </div>
 
       {/* row 4: needs attention */}
-      <Card className="border-border shadow-sm" style={{ borderLeft: "3px solid #F59E0B" }}>
+      <Card className="border-border shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <AlertTriangle className="size-4 text-amber" />
@@ -286,17 +286,17 @@ export function Dashboard({ role, onNavigate }: DashboardProps) {
                 <button
                   key={a.id}
                   type="button"
-                  onClick={() => onNavigate(a.tipe === "stok" ? "stok" : "service")}
+                  onClick={() => onNavigate(a.type === "stok" ? "stok" : "service")}
                   className="flex items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:bg-muted"
                 >
                   <span className={cn(
                     "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
-                    a.tipe === "stok" ? "bg-amber-100 text-amber" : "bg-primary-100 text-primary-700",
+                    a.type === "stok" ? "bg-amber-100 text-amber" : "bg-primary-100 text-primary-700",
                   )}>
-                    {a.tipe === "stok" ? <PackageX className="size-4" /> : <Clock className="size-4" />}
+                    {a.type === "stok" ? <PackageX className="size-4" /> : <Clock className="size-4" />}
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-sm text-foreground">{a.judul}</span>
+                    <span className="block text-sm text-foreground">{a.title}</span>
                     <span className="block text-xs text-muted-foreground">{a.detail}</span>
                   </span>
                 </button>
@@ -353,13 +353,13 @@ function KpiCard({
 
 // ---------- service donut ----------
 function ServiceDonut() {
-  const laporan = LaporanController.getInstance();
-  const komposisi = laporan.komposisiService();
+  const report = ReportController.getInstance();
+  const composition = report.serviceComposition();
   const data = [
-    { key: "antri", label: "Antri", value: komposisi.antri, color: "#94A3B8" },
-    { key: "dikerjakan", label: "Dikerjakan", value: komposisi.dikerjakan, color: "#F59E0B" },
-    { key: "selesai", label: "Selesai", value: komposisi.selesai, color: "#16A34A" },
-    { key: "diambil", label: "Diambil", value: komposisi.diambil, color: "#2F5C8F" },
+    { key: "antri", label: "Antri", value: composition.queued, color: "#94A3B8" },
+    { key: "dikerjakan", label: "Dikerjakan", value: composition.inProgress, color: "#F59E0B" },
+    { key: "selesai", label: "Selesai", value: composition.done, color: "#16A34A" },
+    { key: "diambil", label: "Diambil", value: composition.pickedUp, color: "#2F5C8F" },
   ];
   const total = data.reduce((s, d) => s + d.value, 0);
   return (

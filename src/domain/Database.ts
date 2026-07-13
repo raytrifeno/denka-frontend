@@ -1,61 +1,61 @@
-import { Barang } from "./entities/Barang";
+import { Product } from "./entities/Product";
 import { Supplier } from "./entities/Supplier";
-import { Pengguna } from "./entities/Pengguna";
+import { User } from "./entities/User";
 import {
-  DetailTransaksi,
-  TransaksiPenjualan,
-  type MetodePembayaran,
-} from "./entities/TransaksiPenjualan";
+  SaleItem,
+  Sale,
+  type PaymentMethod,
+} from "./entities/Sale";
 import {
-  RiwayatStatus,
+  StatusLog,
   ServiceOrder,
   type ServiceOrderJSON,
-  type StatusService,
+  type ServiceStatus,
 } from "./entities/ServiceOrder";
 import {
-  BarangKeluar,
-  BarangMasuk,
-  mutasiDariJSON,
-  mutasiKeJSON,
-  type MutasiStokJSON,
-} from "./entities/MutasiStok";
-import type { TransaksiJSON } from "./entities/TransaksiPenjualan";
-import type { DataBarang } from "./entities/Barang";
-import type { DataSupplier } from "./entities/Supplier";
-import { PenyimpananLokal } from "./persistence/PenyimpananLokal";
-import { BarangRepository } from "./repositories/BarangRepository";
+  StockOut,
+  StockIn,
+  stockMovementFromJSON,
+  stockMovementToJSON,
+  type StockMovementJSON,
+} from "./entities/StockMovement";
+import type { SaleJSON } from "./entities/Sale";
+import type { ProductData } from "./entities/Product";
+import type { SupplierData } from "./entities/Supplier";
+import { LocalStore } from "./persistence/LocalStore";
+import { ProductRepository } from "./repositories/ProductRepository";
 import { SupplierRepository } from "./repositories/SupplierRepository";
-import { PenggunaRepository } from "./repositories/PenggunaRepository";
-import { TransaksiRepository } from "./repositories/TransaksiRepository";
+import { UserRepository } from "./repositories/UserRepository";
+import { SaleRepository } from "./repositories/SaleRepository";
 import { ServiceRepository } from "./repositories/ServiceRepository";
-import { MutasiStokRepository } from "./repositories/MutasiStokRepository";
+import { StockMovementRepository } from "./repositories/StockMovementRepository";
 
 /** Tanggal `n` hari yang lalu pada jam tertentu — agar data demo selalu relevan. */
-function hariLalu(n: number, jam = 10, menit = 0): Date {
-  const tanggal = new Date();
-  tanggal.setDate(tanggal.getDate() - n);
-  tanggal.setHours(jam, menit, 0, 0);
-  return tanggal;
+function daysAgo(n: number, hour = 10, minute = 0): Date {
+  const date = new Date();
+  date.setDate(date.getDate() - n);
+  date.setHours(hour, minute, 0, 0);
+  return date;
 }
 
 /** Bentuk seluruh isi database saat disimpan ke penyimpanan lokal. */
-export interface SnapshotDatabase {
-  versi: number;
-  barang: DataBarang[];
-  supplier: DataSupplier[];
-  pengguna: ReturnType<Pengguna["toJSON"]>[];
-  transaksi: TransaksiJSON[];
-  service: ServiceOrderJSON[];
-  mutasiStok: MutasiStokJSON[];
+export interface DatabaseSnapshot {
+  version: number;
+  products: ProductData[];
+  suppliers: SupplierData[];
+  users: ReturnType<User["toJSON"]>[];
+  sales: SaleJSON[];
+  serviceOrders: ServiceOrderJSON[];
+  stockMovements: StockMovementJSON[];
 }
 
-const KUNCI_DATA = "denka-db";
-const VERSI_DATA = 1;
+const KEY_DATA = "denka-db";
+const DATA_VERSION = 1;
 
 /**
  * Database — Singleton yang menampung seluruh repository (simulasi database).
  * Semua controller mengambil data lewat satu instance ini sehingga
- * modul POS, stok, service, dan laporan berbagi data yang sama.
+ * modul POS, stock, service, dan laporan berbagi data yang sama.
  *
  * Persistensi: seluruh isi repository otomatis disimpan ke localStorage
  * setiap ada perubahan, dan dimuat kembali saat aplikasi dibuka.
@@ -63,23 +63,23 @@ const VERSI_DATA = 1;
 export class Database {
   private static instance: Database | null = null;
 
-  readonly barang = new BarangRepository();
-  readonly supplier = new SupplierRepository();
-  readonly pengguna = new PenggunaRepository();
-  readonly transaksi = new TransaksiRepository();
-  readonly service = new ServiceRepository();
-  readonly mutasiStok = new MutasiStokRepository();
+  readonly products = new ProductRepository();
+  readonly suppliers = new SupplierRepository();
+  readonly users = new UserRepository();
+  readonly sales = new SaleRepository();
+  readonly services = new ServiceRepository();
+  readonly stockMovements = new StockMovementRepository();
 
-  private timerSimpan: ReturnType<typeof setTimeout> | null = null;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   private constructor() {
-    const tersimpan = PenyimpananLokal.muat<SnapshotDatabase>(KUNCI_DATA);
-    if (tersimpan && tersimpan.versi === VERSI_DATA) {
-      this.hidrasi(tersimpan);
+    const stored = LocalStore.load<DatabaseSnapshot>(KEY_DATA);
+    if (stored && stored.version === DATA_VERSION) {
+      this.hydrate(stored);
     } else {
-      this.seedSemua();
+      this.seedAll();
     }
-    this.pasangAutoSimpan();
+    this.setupAutoSave();
   }
 
   static getInstance(): Database {
@@ -89,270 +89,270 @@ export class Database {
     return Database.instance;
   }
 
-  private get semuaRepository() {
-    return [this.barang, this.supplier, this.pengguna, this.transaksi, this.service, this.mutasiStok];
+  private get allRepositories() {
+    return [this.products, this.suppliers, this.users, this.sales, this.services, this.stockMovements];
   }
 
   // ---------- persistensi ----------
 
   /** Muat kembali seluruh entity dari snapshot JSON (revive tanggal & subclass). */
-  private hidrasi(data: SnapshotDatabase): void {
-    this.barang.seed(data.barang.map(Barang.dariJSON));
-    this.supplier.seed(data.supplier.map(Supplier.dariJSON));
-    this.pengguna.seed(data.pengguna.map(Pengguna.dariJSON));
-    this.transaksi.seed(data.transaksi.map(TransaksiPenjualan.dariJSON));
-    this.service.seed(data.service.map(ServiceOrder.dariJSON));
-    this.mutasiStok.seed(data.mutasiStok.map(mutasiDariJSON));
+  private hydrate(data: DatabaseSnapshot): void {
+    this.products.seed(data.products.map(Product.fromJSON));
+    this.suppliers.seed(data.suppliers.map(Supplier.fromJSON));
+    this.users.seed(data.users.map(User.fromJSON));
+    this.sales.seed(data.sales.map(Sale.fromJSON));
+    this.services.seed(data.serviceOrders.map(ServiceOrder.fromJSON));
+    this.stockMovements.seed(data.stockMovements.map(stockMovementFromJSON));
   }
 
-  private snapshot(): SnapshotDatabase {
+  private snapshot(): DatabaseSnapshot {
     return {
-      versi: VERSI_DATA,
-      barang: this.barang.findAll().map((row) => row.toJSON()),
-      supplier: this.supplier.findAll().map((row) => row.toJSON()),
-      pengguna: this.pengguna.findAll().map((row) => row.toJSON()),
-      transaksi: this.transaksi.findAll().map((row) => row.toJSON()),
-      service: this.service.findAll().map((row) => row.toJSON()),
-      mutasiStok: this.mutasiStok.findAll().map(mutasiKeJSON),
+      version: DATA_VERSION,
+      products: this.products.findAll().map((row) => row.toJSON()),
+      suppliers: this.suppliers.findAll().map((row) => row.toJSON()),
+      users: this.users.findAll().map((row) => row.toJSON()),
+      sales: this.sales.findAll().map((row) => row.toJSON()),
+      serviceOrders: this.services.findAll().map((row) => row.toJSON()),
+      stockMovements: this.stockMovements.findAll().map(stockMovementToJSON),
     };
   }
 
   /** Simpan otomatis (debounce) setiap ada perubahan di repository mana pun. */
-  private pasangAutoSimpan(): void {
-    if (!PenyimpananLokal.tersedia) return;
-    const jadwalkan = () => {
-      if (this.timerSimpan) clearTimeout(this.timerSimpan);
-      this.timerSimpan = setTimeout(() => {
-        PenyimpananLokal.simpan(KUNCI_DATA, this.snapshot());
+  private setupAutoSave(): void {
+    if (!LocalStore.available) return;
+    const schedule = () => {
+      if (this.saveTimer) clearTimeout(this.saveTimer);
+      this.saveTimer = setTimeout(() => {
+        LocalStore.save(KEY_DATA, this.snapshot());
       }, 250);
     };
-    this.semuaRepository.forEach((repo) => repo.subscribe(jadwalkan));
+    this.allRepositories.forEach((repo) => repo.subscribe(schedule));
   }
 
   /** Snapshot seluruh data — dipakai modul sinkronisasi untuk backup ke cloud. */
-  ambilSnapshot(): SnapshotDatabase {
+  takeSnapshot(): DatabaseSnapshot {
     return this.snapshot();
   }
 
   /** Ganti seluruh isi database dari snapshot — dipakai saat restore dari cloud. */
-  gantiSemua(data: SnapshotDatabase): void {
-    this.hidrasi(data);
-    this.semuaRepository.forEach((repo) => repo.touch());
+  replaceAll(data: DatabaseSnapshot): void {
+    this.hydrate(data);
+    this.allRepositories.forEach((repo) => repo.touch());
   }
 
   /** Daftarkan callback yang dipanggil setiap ada perubahan di repository mana pun. */
-  onChange(pendengar: () => void): void {
-    this.semuaRepository.forEach((repo) => repo.subscribe(pendengar));
+  onChange(listener: () => void): void {
+    this.allRepositories.forEach((repo) => repo.subscribe(listener));
   }
 
   /** Kembalikan seluruh data ke kondisi awal (seed) dan hapus penyimpanan. */
-  resetKeSeedAwal(): void {
-    PenyimpananLokal.hapus(KUNCI_DATA);
-    this.seedSemua();
-    this.semuaRepository.forEach((repo) => repo.touch());
+  resetToInitialSeed(): void {
+    LocalStore.remove(KEY_DATA);
+    this.seedAll();
+    this.allRepositories.forEach((repo) => repo.touch());
   }
 
-  private seedSemua(): void {
-    this.seedSupplier();
-    this.seedBarang();
-    this.seedPengguna();
-    this.seedTransaksi();
-    this.seedService();
-    this.seedMutasiStok();
+  private seedAll(): void {
+    this.seedSuppliers();
+    this.seedProducts();
+    this.seedUsers();
+    this.seedSales();
+    this.seedServices();
+    this.seedStockMovements();
   }
 
   // ---------- seed data awal ----------
 
-  private seedSupplier(): void {
-    this.supplier.seed([
+  private seedSuppliers(): void {
+    this.suppliers.seed([
       new Supplier({
-        id: "sup1", nama: "PT Sumber Komputer", kontakPerson: "Hendra Gunawan",
-        telepon: "081234500011", alamat: "Jl. Mangga Dua Raya No. 12, Jakarta Pusat",
-        catatan: "Supplier utama laptop & SSD, pembayaran tempo 14 hari.",
-        barangDisuplai: ["Laptop ASUS Vivobook 14", "Macbook Air M1", "SSD NVMe 512GB", "PC Rakitan Gaming"],
+        id: "sup1", name: "PT Sumber Komputer", contactPerson: "Hendra Gunawan",
+        phone: "081234500011", address: "Jl. Mangga Dua Raya No. 12, Jakarta Pusat",
+        notes: "Supplier utama laptop & SSD, pembayaran tempo 14 hari.",
+        suppliedItems: ["Laptop ASUS Vivobook 14", "Macbook Air M1", "SSD NVMe 512GB", "PC Rakitan Gaming"],
       }),
       new Supplier({
-        id: "sup2", nama: "CV Elektronik Jaya", kontakPerson: "Lisa Permata",
-        telepon: "082199900022", alamat: "Jl. Kenari No. 45, Bandung",
-        barangDisuplai: ["Laptop Lenovo IdeaPad 3", "Headset Gaming", "Tas Laptop 14\""],
+        id: "sup2", name: "CV Elektronik Jaya", contactPerson: "Lisa Permata",
+        phone: "082199900022", address: "Jl. Kenari No. 45, Bandung",
+        suppliedItems: ["Laptop Lenovo IdeaPad 3", "Headset Gaming", "Tas Laptop 14\""],
       }),
       new Supplier({
-        id: "sup3", nama: "Toko Grosir IT", kontakPerson: "Budi Santoso",
-        telepon: "081333300033", alamat: "Ruko ITC Lt. 2 Blok C, Surabaya",
-        catatan: "Harga grosir aksesoris paling kompetitif.",
-        barangDisuplai: ["Mouse Wireless Logitech", "Keyboard Mechanical RGB", "Power Supply 500W", "Thermal Paste"],
+        id: "sup3", name: "Toko Grosir IT", contactPerson: "Budi Santoso",
+        phone: "081333300033", address: "Ruko ITC Lt. 2 Blok C, Surabaya",
+        notes: "Harga grosir aksesoris paling kompetitif.",
+        suppliedItems: ["Mouse Wireless Logitech", "Keyboard Mechanical RGB", "Power Supply 500W", "Thermal Paste"],
       }),
       new Supplier({
-        id: "sup4", nama: "PT Maju Teknologi", kontakPerson: "Rina Astuti",
-        telepon: "085700000044", alamat: "Jl. Gajah Mada No. 8, Semarang",
-        barangDisuplai: ["Laptop Acer Aspire 5", "RAM DDR4 8GB", "Cooling Pad"],
+        id: "sup4", name: "PT Maju Teknologi", contactPerson: "Rina Astuti",
+        phone: "085700000044", address: "Jl. Gajah Mada No. 8, Semarang",
+        suppliedItems: ["Laptop Acer Aspire 5", "RAM DDR4 8GB", "Cooling Pad"],
       }),
     ]);
   }
 
-  private seedBarang(): void {
-    this.barang.seed([
-      new Barang({ id: "i1", kode: "LP-001", nama: "Laptop ASUS Vivobook 14", kategori: "laptop", hargaBeli: 6200000, hargaJual: 7000000, stok: 5, stokMinimum: 3, supplier: "PT Sumber Komputer", spesifikasi: "Ryzen 5 / 8GB / 512GB SSD" }),
-      new Barang({ id: "i2", kode: "LP-002", nama: "Laptop Acer Aspire 5", kategori: "laptop", hargaBeli: 7600000, hargaJual: 8500000, stok: 3, stokMinimum: 3, supplier: "PT Maju Teknologi", spesifikasi: "Core i5 / 8GB / 512GB SSD" }),
-      new Barang({ id: "i3", kode: "LP-003", nama: "Macbook Air M1", kategori: "laptop", hargaBeli: 13000000, hargaJual: 14500000, stok: 2, stokMinimum: 3, supplier: "PT Sumber Komputer", spesifikasi: "Apple M1 / 8GB / 256GB" }),
-      new Barang({ id: "i4", kode: "LP-004", nama: "Laptop Lenovo IdeaPad 3", kategori: "laptop", hargaBeli: 5500000, hargaJual: 6200000, stok: 0, stokMinimum: 2, supplier: "CV Elektronik Jaya", spesifikasi: "Core i3 / 8GB / 256GB SSD" }),
-      new Barang({ id: "i5", kode: "PC-001", nama: "PC Rakitan Gaming", kategori: "pc", hargaBeli: 11000000, hargaJual: 12500000, stok: 2, stokMinimum: 2, supplier: "PT Sumber Komputer", spesifikasi: "Ryzen 5 5600 / RTX 3060 / 16GB" }),
-      new Barang({ id: "i15", kode: "PC-002", nama: "Motherboard B550M", kategori: "pc", hargaBeli: 1500000, hargaJual: 1750000, stok: 5, stokMinimum: 2, supplier: "PT Sumber Komputer", spesifikasi: "AM4 / DDR4 / mATX" }),
-      new Barang({ id: "i16", kode: "PC-003", nama: "Processor Ryzen 5 5600", kategori: "pc", hargaBeli: 1650000, hargaJual: 1900000, stok: 6, stokMinimum: 2, supplier: "PT Maju Teknologi", spesifikasi: "6 Core / 12 Thread / AM4" }),
-      new Barang({ id: "i6", kode: "SP-001", nama: "SSD NVMe 512GB", kategori: "sparepart", hargaBeli: 720000, hargaJual: 900000, stok: 3, stokMinimum: 5, supplier: "PT Sumber Komputer", spesifikasi: "PCIe Gen3 / 2400MB/s" }),
-      new Barang({ id: "i7", kode: "SP-002", nama: "RAM DDR4 8GB", kategori: "sparepart", hargaBeli: 350000, hargaJual: 450000, stok: 9, stokMinimum: 5, supplier: "PT Maju Teknologi", spesifikasi: "3200MHz / SODIMM" }),
-      new Barang({ id: "i8", kode: "AC-001", nama: "Mouse Wireless Logitech", kategori: "aksesoris", hargaBeli: 110000, hargaJual: 150000, stok: 24, stokMinimum: 5, supplier: "Toko Grosir IT", spesifikasi: "2.4GHz / 1000 DPI" }),
-      new Barang({ id: "i9", kode: "AC-002", nama: "Keyboard Mechanical RGB", kategori: "aksesoris", hargaBeli: 350000, hargaJual: 450000, stok: 12, stokMinimum: 4, supplier: "Toko Grosir IT", spesifikasi: "Blue Switch / TKL" }),
-      new Barang({ id: "i10", kode: "AC-003", nama: "Headset Gaming", kategori: "aksesoris", hargaBeli: 240000, hargaJual: 320000, stok: 0, stokMinimum: 4, supplier: "CV Elektronik Jaya", spesifikasi: "7.1 Surround / USB" }),
-      new Barang({ id: "i11", kode: "SP-003", nama: "Power Supply 500W", kategori: "sparepart", hargaBeli: 430000, hargaJual: 550000, stok: 6, stokMinimum: 3, supplier: "Toko Grosir IT", spesifikasi: "80+ Bronze / Non-modular" }),
-      new Barang({ id: "i12", kode: "LN-001", nama: "Thermal Paste", kategori: "lainnya", hargaBeli: 30000, hargaJual: 45000, stok: 30, stokMinimum: 10, supplier: "Toko Grosir IT", spesifikasi: "Tube 4g / 8.5 W/mK" }),
-      new Barang({ id: "i13", kode: "LN-002", nama: "Tas Laptop 14\"", kategori: "lainnya", hargaBeli: 85000, hargaJual: 120000, stok: 15, stokMinimum: 5, supplier: "CV Elektronik Jaya", spesifikasi: "Waterproof / Slot 14 inch" }),
-      new Barang({ id: "i14", kode: "LN-003", nama: "Cooling Pad", kategori: "lainnya", hargaBeli: 130000, hargaJual: 175000, stok: 9, stokMinimum: 4, supplier: "PT Maju Teknologi", spesifikasi: "5 Fan / RGB / 17 inch" }),
+  private seedProducts(): void {
+    this.products.seed([
+      new Product({ id: "i1", code: "LP-001", name: "Laptop ASUS Vivobook 14", category: "laptop", purchasePrice: 6200000, sellPrice: 7000000, stock: 5, minStock: 3, supplier: "PT Sumber Komputer", specification: "Ryzen 5 / 8GB / 512GB SSD" }),
+      new Product({ id: "i2", code: "LP-002", name: "Laptop Acer Aspire 5", category: "laptop", purchasePrice: 7600000, sellPrice: 8500000, stock: 3, minStock: 3, supplier: "PT Maju Teknologi", specification: "Core i5 / 8GB / 512GB SSD" }),
+      new Product({ id: "i3", code: "LP-003", name: "Macbook Air M1", category: "laptop", purchasePrice: 13000000, sellPrice: 14500000, stock: 2, minStock: 3, supplier: "PT Sumber Komputer", specification: "Apple M1 / 8GB / 256GB" }),
+      new Product({ id: "i4", code: "LP-004", name: "Laptop Lenovo IdeaPad 3", category: "laptop", purchasePrice: 5500000, sellPrice: 6200000, stock: 0, minStock: 2, supplier: "CV Elektronik Jaya", specification: "Core i3 / 8GB / 256GB SSD" }),
+      new Product({ id: "i5", code: "PC-001", name: "PC Rakitan Gaming", category: "pc", purchasePrice: 11000000, sellPrice: 12500000, stock: 2, minStock: 2, supplier: "PT Sumber Komputer", specification: "Ryzen 5 5600 / RTX 3060 / 16GB" }),
+      new Product({ id: "i15", code: "PC-002", name: "Motherboard B550M", category: "pc", purchasePrice: 1500000, sellPrice: 1750000, stock: 5, minStock: 2, supplier: "PT Sumber Komputer", specification: "AM4 / DDR4 / mATX" }),
+      new Product({ id: "i16", code: "PC-003", name: "Processor Ryzen 5 5600", category: "pc", purchasePrice: 1650000, sellPrice: 1900000, stock: 6, minStock: 2, supplier: "PT Maju Teknologi", specification: "6 Core / 12 Thread / AM4" }),
+      new Product({ id: "i6", code: "SP-001", name: "SSD NVMe 512GB", category: "sparepart", purchasePrice: 720000, sellPrice: 900000, stock: 3, minStock: 5, supplier: "PT Sumber Komputer", specification: "PCIe Gen3 / 2400MB/s" }),
+      new Product({ id: "i7", code: "SP-002", name: "RAM DDR4 8GB", category: "sparepart", purchasePrice: 350000, sellPrice: 450000, stock: 9, minStock: 5, supplier: "PT Maju Teknologi", specification: "3200MHz / SODIMM" }),
+      new Product({ id: "i8", code: "AC-001", name: "Mouse Wireless Logitech", category: "aksesoris", purchasePrice: 110000, sellPrice: 150000, stock: 24, minStock: 5, supplier: "Toko Grosir IT", specification: "2.4GHz / 1000 DPI" }),
+      new Product({ id: "i9", code: "AC-002", name: "Keyboard Mechanical RGB", category: "aksesoris", purchasePrice: 350000, sellPrice: 450000, stock: 12, minStock: 4, supplier: "Toko Grosir IT", specification: "Blue Switch / TKL" }),
+      new Product({ id: "i10", code: "AC-003", name: "Headset Gaming", category: "aksesoris", purchasePrice: 240000, sellPrice: 320000, stock: 0, minStock: 4, supplier: "CV Elektronik Jaya", specification: "7.1 Surround / USB" }),
+      new Product({ id: "i11", code: "SP-003", name: "Power Supply 500W", category: "sparepart", purchasePrice: 430000, sellPrice: 550000, stock: 6, minStock: 3, supplier: "Toko Grosir IT", specification: "80+ Bronze / Non-modular" }),
+      new Product({ id: "i12", code: "LN-001", name: "Thermal Paste", category: "lainnya", purchasePrice: 30000, sellPrice: 45000, stock: 30, minStock: 10, supplier: "Toko Grosir IT", specification: "Tube 4g / 8.5 W/mK" }),
+      new Product({ id: "i13", code: "LN-002", name: "Tas Laptop 14\"", category: "lainnya", purchasePrice: 85000, sellPrice: 120000, stock: 15, minStock: 5, supplier: "CV Elektronik Jaya", specification: "Waterproof / Slot 14 inch" }),
+      new Product({ id: "i14", code: "LN-003", name: "Cooling Pad", category: "lainnya", purchasePrice: 130000, sellPrice: 175000, stock: 9, minStock: 4, supplier: "PT Maju Teknologi", specification: "5 Fan / RGB / 17 inch" }),
     ]);
   }
 
-  private seedPengguna(): void {
-    this.pengguna.seed([
-      new Pengguna({ id: "u1", nama: "Budi Denka", username: "budi", email: "budi@denkacomputer.id", password: "denka123", role: "pemilik", aktif: true, terakhirLogin: hariLalu(0, 8, 15) }),
-      new Pengguna({ id: "u2", nama: "Sari Admin", username: "sari", email: "sari@denkacomputer.id", password: "sari123", role: "admin", aktif: true, terakhirLogin: hariLalu(0, 9, 2) }),
-      new Pengguna({ id: "u3", nama: "Rizki Teknisi", username: "rizki", email: "rizki@denkacomputer.id", password: "rizki123", role: "admin", aktif: true, terakhirLogin: hariLalu(1, 16, 40) }),
-      new Pengguna({ id: "u4", nama: "Agus Pratama", username: "agus", email: "agus@denkacomputer.id", password: "agus123", role: "admin", aktif: false, terakhirLogin: hariLalu(8, 11, 25) }),
+  private seedUsers(): void {
+    this.users.seed([
+      new User({ id: "u1", name: "Budi Denka", username: "budi", email: "budi@denkacomputer.id", password: "denka123", role: "pemilik", active: true, lastLogin: daysAgo(0, 8, 15) }),
+      new User({ id: "u2", name: "Sari Admin", username: "sari", email: "sari@denkacomputer.id", password: "sari123", role: "admin", active: true, lastLogin: daysAgo(0, 9, 2) }),
+      new User({ id: "u3", name: "Rizki Teknisi", username: "rizki", email: "rizki@denkacomputer.id", password: "rizki123", role: "admin", active: true, lastLogin: daysAgo(1, 16, 40) }),
+      new User({ id: "u4", name: "Agus Pratama", username: "agus", email: "agus@denkacomputer.id", password: "agus123", role: "admin", active: false, lastLogin: daysAgo(8, 11, 25) }),
     ]);
   }
 
-  private seedTransaksi(): void {
-    // helper: buat DetailTransaksi dari kode barang yang sudah di-seed
-    const detail = (kode: string, jumlah: number): DetailTransaksi => {
-      const barang = this.barang.findByKode(kode);
-      if (!barang) throw new Error(`Seed transaksi: barang ${kode} tidak ditemukan.`);
-      return new DetailTransaksi(barang.id, barang.nama, barang.hargaJual, barang.hargaBeli, jumlah);
+  private seedSales(): void {
+    // helper: buat SaleItem dari code barang yang sudah di-seed
+    const detail = (code: string, quantity: number): SaleItem => {
+      const product = this.products.findByCode(code);
+      if (!product) throw new Error(`Seed transaksi: barang ${code} tidak ditemukan.`);
+      return new SaleItem(product.id, product.name, product.sellPrice, product.purchasePrice, quantity);
     };
 
-    type SeedTrx = {
-      hari: number; jam: number; kasir: string;
-      metode: MetodePembayaran; items: [string, number][]; diskon?: number;
+    type SeedSale = {
+      day: number; hour: number; cashier: string;
+      method: PaymentMethod; items: [string, number][]; discount?: number;
     };
 
-    const daftar: SeedTrx[] = [
+    const list: SeedSale[] = [
       // hari ini & minggu berjalan
-      { hari: 0, jam: 9, kasir: "Sari Admin", metode: "tunai", items: [["AC-001", 2], ["LN-001", 3]] },
-      { hari: 0, jam: 11, kasir: "Budi Denka", metode: "transfer", items: [["LP-001", 1]] },
-      { hari: 0, jam: 14, kasir: "Sari Admin", metode: "qris", items: [["SP-002", 2], ["AC-002", 1]] },
-      { hari: 1, jam: 10, kasir: "Sari Admin", metode: "tunai", items: [["SP-001", 2], ["LN-001", 2]] },
-      { hari: 1, jam: 15, kasir: "Budi Denka", metode: "qris", items: [["LN-003", 1], ["AC-001", 3]] },
-      { hari: 2, jam: 11, kasir: "Sari Admin", metode: "transfer", items: [["LP-002", 1], ["LN-002", 1]] },
-      { hari: 3, jam: 13, kasir: "Sari Admin", metode: "tunai", items: [["AC-002", 2], ["SP-003", 1]] },
-      { hari: 4, jam: 10, kasir: "Budi Denka", metode: "tunai", items: [["SP-002", 3]], diskon: 50000 },
-      { hari: 5, jam: 16, kasir: "Sari Admin", metode: "qris", items: [["LP-001", 1], ["AC-001", 1], ["LN-002", 1]] },
-      { hari: 6, jam: 12, kasir: "Sari Admin", metode: "tunai", items: [["LN-001", 5], ["AC-001", 2]] },
+      { day: 0, hour: 9, cashier: "Sari Admin", method: "tunai", items: [["AC-001", 2], ["LN-001", 3]] },
+      { day: 0, hour: 11, cashier: "Budi Denka", method: "transfer", items: [["LP-001", 1]] },
+      { day: 0, hour: 14, cashier: "Sari Admin", method: "qris", items: [["SP-002", 2], ["AC-002", 1]] },
+      { day: 1, hour: 10, cashier: "Sari Admin", method: "tunai", items: [["SP-001", 2], ["LN-001", 2]] },
+      { day: 1, hour: 15, cashier: "Budi Denka", method: "qris", items: [["LN-003", 1], ["AC-001", 3]] },
+      { day: 2, hour: 11, cashier: "Sari Admin", method: "transfer", items: [["LP-002", 1], ["LN-002", 1]] },
+      { day: 3, hour: 13, cashier: "Sari Admin", method: "tunai", items: [["AC-002", 2], ["SP-003", 1]] },
+      { day: 4, hour: 10, cashier: "Budi Denka", method: "tunai", items: [["SP-002", 3]], discount: 50000 },
+      { day: 5, hour: 16, cashier: "Sari Admin", method: "qris", items: [["LP-001", 1], ["AC-001", 1], ["LN-002", 1]] },
+      { day: 6, hour: 12, cashier: "Sari Admin", method: "tunai", items: [["LN-001", 5], ["AC-001", 2]] },
       // minggu-minggu sebelumnya (untuk laporan tren & keuntungan)
-      { hari: 9, jam: 11, kasir: "Budi Denka", metode: "transfer", items: [["PC-001", 1]] },
-      { hari: 11, jam: 14, kasir: "Sari Admin", metode: "tunai", items: [["SP-001", 3], ["SP-002", 2]] },
-      { hari: 13, jam: 10, kasir: "Sari Admin", metode: "qris", items: [["AC-002", 3], ["LN-003", 2]] },
-      { hari: 16, jam: 15, kasir: "Budi Denka", metode: "transfer", items: [["LP-003", 1]] },
-      { hari: 18, jam: 11, kasir: "Sari Admin", metode: "tunai", items: [["AC-001", 4], ["LN-001", 4]] },
-      { hari: 20, jam: 13, kasir: "Sari Admin", metode: "tunai", items: [["SP-003", 2], ["PC-002", 1]] },
-      { hari: 23, jam: 10, kasir: "Budi Denka", metode: "qris", items: [["LP-001", 1], ["SP-002", 1]] },
-      { hari: 25, jam: 16, kasir: "Sari Admin", metode: "transfer", items: [["PC-003", 2]] },
-      { hari: 27, jam: 12, kasir: "Sari Admin", metode: "tunai", items: [["AC-001", 5], ["LN-002", 2]] },
+      { day: 9, hour: 11, cashier: "Budi Denka", method: "transfer", items: [["PC-001", 1]] },
+      { day: 11, hour: 14, cashier: "Sari Admin", method: "tunai", items: [["SP-001", 3], ["SP-002", 2]] },
+      { day: 13, hour: 10, cashier: "Sari Admin", method: "qris", items: [["AC-002", 3], ["LN-003", 2]] },
+      { day: 16, hour: 15, cashier: "Budi Denka", method: "transfer", items: [["LP-003", 1]] },
+      { day: 18, hour: 11, cashier: "Sari Admin", method: "tunai", items: [["AC-001", 4], ["LN-001", 4]] },
+      { day: 20, hour: 13, cashier: "Sari Admin", method: "tunai", items: [["SP-003", 2], ["PC-002", 1]] },
+      { day: 23, hour: 10, cashier: "Budi Denka", method: "qris", items: [["LP-001", 1], ["SP-002", 1]] },
+      { day: 25, hour: 16, cashier: "Sari Admin", method: "transfer", items: [["PC-003", 2]] },
+      { day: 27, hour: 12, cashier: "Sari Admin", method: "tunai", items: [["AC-001", 5], ["LN-002", 2]] },
     ];
 
-    let nomor = 1023;
-    const transaksi = daftar
+    let num = 1023;
+    const sales = list
       .slice()
       .reverse()
       .map(
         (seed, index) =>
-          new TransaksiPenjualan({
+          new Sale({
             id: "trx-seed-" + index,
-            nomor: "TRX-" + nomor++,
-            tanggal: hariLalu(seed.hari, seed.jam),
-            kasir: seed.kasir,
-            items: seed.items.map(([kode, jumlah]) => detail(kode, jumlah)),
-            tipeDiskon: "rp",
-            nilaiDiskon: seed.diskon ?? 0,
-            metode: seed.metode,
-            uangDiterima: 0,
+            number: "TRX-" + num++,
+            date: daysAgo(seed.day, seed.hour),
+            cashier: seed.cashier,
+            items: seed.items.map(([code, quantity]) => detail(code, quantity)),
+            discountType: "rp",
+            discountValue: seed.discount ?? 0,
+            method: seed.method,
+            amountPaid: 0,
           }),
       )
       .reverse(); // terbaru di depan
 
-    this.transaksi.seed(transaksi);
+    this.sales.seed(sales);
   }
 
-  private seedService(): void {
-    const riwayat = (langkah: [StatusService, number, number][]): RiwayatStatus[] =>
-      langkah.map(([status, hari, jam]) => new RiwayatStatus(status, hariLalu(hari, jam)));
+  private seedServices(): void {
+    const history = (steps: [ServiceStatus, number, number][]): StatusLog[] =>
+      steps.map(([status, day, hour]) => new StatusLog(status, daysAgo(day, hour)));
 
-    this.service.seed([
+    this.services.seed([
       new ServiceOrder({
-        id: "s6", nomor: "#SRV-0043", pelanggan: "Citra Dewanti", telepon: "081255566677",
-        jenisUnit: "Laptop", merk: "Lenovo IdeaPad", model: "Slim 3",
-        kelengkapan: ["Charger / Adaptor"], keluhan: "Keyboard beberapa tombol tidak berfungsi.",
-        teknisi: "Agus Pratama", prioritas: "normal", status: "diperiksa", tanggalMasuk: hariLalu(0, 8),
-        riwayat: riwayat([["antri", 0, 8], ["diperiksa", 0, 10]]),
+        id: "s6", number: "#SRV-0043", customer: "Citra Dewanti", phone: "081255566677",
+        unitType: "Laptop", brand: "Lenovo IdeaPad", model: "Slim 3",
+        accessories: ["Charger / Adaptor"], complaint: "Keyboard beberapa tombol tidak berfungsi.",
+        technician: "Agus Pratama", priority: "normal", status: "diperiksa", receivedAt: daysAgo(0, 8),
+        history: history([["antri", 0, 8], ["diperiksa", 0, 10]]),
       }),
       new ServiceOrder({
-        id: "s1", nomor: "#SRV-0042", pelanggan: "Andi Saputra", telepon: "081234567890",
-        jenisUnit: "Laptop", merk: "ASUS Vivobook", model: "X415", nomorSeri: "ASX-552310",
-        kelengkapan: ["Charger / Adaptor"],
-        keluhan: "Laptop mati total, tidak ada respon saat tombol power ditekan.",
-        teknisi: "Rizki Teknisi", prioritas: "urgent", status: "dikerjakan",
-        tanggalMasuk: hariLalu(1, 9), biayaJasa: 250000,
-        riwayat: riwayat([["antri", 1, 9], ["diperiksa", 1, 11], ["dikerjakan", 1, 14]]),
+        id: "s1", number: "#SRV-0042", customer: "Andi Saputra", phone: "081234567890",
+        unitType: "Laptop", brand: "ASUS Vivobook", model: "X415", serialNo: "ASX-552310",
+        accessories: ["Charger / Adaptor"],
+        complaint: "Laptop mati total, tidak ada respon saat tombol power ditekan.",
+        technician: "Rizki Teknisi", priority: "urgent", status: "dikerjakan",
+        receivedAt: daysAgo(1, 9), serviceFee: 250000,
+        history: history([["antri", 1, 9], ["diperiksa", 1, 11], ["dikerjakan", 1, 14]]),
       }),
       new ServiceOrder({
-        id: "s2", nomor: "#SRV-0041", pelanggan: "Rina Wijaya", telepon: "082199887766",
-        jenisUnit: "PC", merk: "Rakitan", keluhan: "PC sering restart sendiri saat main game.",
-        teknisi: "Budi Denka", prioritas: "normal", status: "antri", tanggalMasuk: hariLalu(0, 10),
-        riwayat: riwayat([["antri", 0, 10]]),
+        id: "s2", number: "#SRV-0041", customer: "Rina Wijaya", phone: "082199887766",
+        unitType: "PC", brand: "Rakitan", complaint: "PC sering restart sendiri saat main game.",
+        technician: "Budi Denka", priority: "normal", status: "antri", receivedAt: daysAgo(0, 10),
+        history: history([["antri", 0, 10]]),
       }),
       new ServiceOrder({
-        id: "s3", nomor: "#SRV-0040", pelanggan: "Toko Maju Jaya", telepon: "081311112222",
-        jenisUnit: "Printer", merk: "Epson", model: "L3210",
-        kelengkapan: ["Kabel Data"], keluhan: "Hasil cetak bergaris dan warna pudar.",
-        diagnosa: "Head printer kotor, sudah dilakukan cleaning.",
-        teknisi: "Agus Pratama", prioritas: "normal", status: "selesai",
-        tanggalMasuk: hariLalu(3, 9), biayaJasa: 150000,
-        riwayat: riwayat([["antri", 3, 9], ["diperiksa", 3, 11], ["dikerjakan", 3, 13], ["selesai", 2, 11]]),
+        id: "s3", number: "#SRV-0040", customer: "Toko Maju Jaya", phone: "081311112222",
+        unitType: "Printer", brand: "Epson", model: "L3210",
+        accessories: ["Kabel Data"], complaint: "Hasil cetak bergaris dan warna pudar.",
+        diagnosis: "Head printer kotor, sudah dilakukan cleaning.",
+        technician: "Agus Pratama", priority: "normal", status: "selesai",
+        receivedAt: daysAgo(3, 9), serviceFee: 150000,
+        history: history([["antri", 3, 9], ["diperiksa", 3, 11], ["dikerjakan", 3, 13], ["selesai", 2, 11]]),
       }),
       new ServiceOrder({
-        id: "s4", nomor: "#SRV-0039", pelanggan: "Dewi Lestari", telepon: "085700001111",
-        jenisUnit: "Laptop", merk: "HP Pavilion", model: "14-dv",
-        kelengkapan: ["Charger / Adaptor", "Tas Laptop"], keluhan: "Layar pecah perlu ganti LCD.",
-        diagnosa: "LCD retak, menunggu sparepart LCD 14 inch.",
-        teknisi: "Rizki Teknisi", prioritas: "urgent", status: "sparepart",
-        tanggalMasuk: hariLalu(2, 9), biayaJasa: 300000,
-        riwayat: riwayat([["antri", 2, 9], ["diperiksa", 2, 13], ["dikerjakan", 2, 15], ["sparepart", 1, 10]]),
+        id: "s4", number: "#SRV-0039", customer: "Dewi Lestari", phone: "085700001111",
+        unitType: "Laptop", brand: "HP Pavilion", model: "14-dv",
+        accessories: ["Charger / Adaptor", "Tas Laptop"], complaint: "Layar pecah perlu ganti LCD.",
+        diagnosis: "LCD retak, menunggu sparepart LCD 14 inch.",
+        technician: "Rizki Teknisi", priority: "urgent", status: "sparepart",
+        receivedAt: daysAgo(2, 9), serviceFee: 300000,
+        history: history([["antri", 2, 9], ["diperiksa", 2, 13], ["dikerjakan", 2, 15], ["sparepart", 1, 10]]),
       }),
       new ServiceOrder({
-        id: "s5", nomor: "#SRV-0038", pelanggan: "Bayu Pratama", telepon: "081888899900",
-        jenisUnit: "Laptop", merk: "Apple Macbook", model: "Air M1",
-        kelengkapan: ["Charger / Adaptor"], keluhan: "Upgrade penyimpanan dan bersih-bersih sistem.",
-        diagnosa: "Upgrade SSD selesai, performa normal.",
-        teknisi: "Budi Denka", prioritas: "normal", status: "diambil",
-        tanggalMasuk: hariLalu(5, 9), biayaJasa: 200000,
-        riwayat: riwayat([["antri", 5, 9], ["dikerjakan", 5, 13], ["selesai", 4, 10], ["diambil", 3, 16]]),
+        id: "s5", number: "#SRV-0038", customer: "Bayu Pratama", phone: "081888899900",
+        unitType: "Laptop", brand: "Apple Macbook", model: "Air M1",
+        accessories: ["Charger / Adaptor"], complaint: "Upgrade penyimpanan dan bersih-bersih sistem.",
+        diagnosis: "Upgrade SSD selesai, performa normal.",
+        technician: "Budi Denka", priority: "normal", status: "diambil",
+        receivedAt: daysAgo(5, 9), serviceFee: 200000,
+        history: history([["antri", 5, 9], ["dikerjakan", 5, 13], ["selesai", 4, 10], ["diambil", 3, 16]]),
       }),
     ]);
 
     // sparepart terpakai pada service Bayu Pratama
-    const service = this.service.findById("s5");
-    const ssd = this.barang.findById("i6");
+    const service = this.services.findById("s5");
+    const ssd = this.products.findById("i6");
     if (service && ssd) {
-      service.tambahSparepart(ssd.id, ssd.nama, 1, ssd.hargaJual);
+      service.addPart(ssd.id, ssd.name, 1, ssd.sellPrice);
     }
   }
 
-  private seedMutasiStok(): void {
-    this.mutasiStok.seed([
-      new BarangKeluar({ id: "out1", tanggal: hariLalu(1, 9), namaBarang: "Keyboard Mechanical RGB", jumlah: 1, alasan: "rusak", catatan: "Switch tidak berfungsi, klaim garansi", dicatatOleh: "Sari Admin" }),
-      new BarangMasuk({ id: "in1", tanggal: hariLalu(1, 8), namaBarang: "SSD NVMe 512GB", supplier: "PT Sumber Komputer", jumlah: 10, hargaSatuan: 720000, noFaktur: "FK-2026-0451", dicatatOleh: "Budi Denka" }),
-      new BarangKeluar({ id: "out2", tanggal: hariLalu(2, 10), namaBarang: "Power Supply 500W", jumlah: 2, alasan: "retur", catatan: "Unit cacat produksi, dikembalikan ke supplier", dicatatOleh: "Budi Denka" }),
-      new BarangMasuk({ id: "in2", tanggal: hariLalu(2, 9), namaBarang: "RAM DDR4 8GB", supplier: "PT Maju Teknologi", jumlah: 15, hargaSatuan: 350000, noFaktur: "FK-2026-0448", dicatatOleh: "Sari Admin" }),
-      new BarangMasuk({ id: "in3", tanggal: hariLalu(3, 11), namaBarang: "Laptop ASUS Vivobook 14", supplier: "PT Sumber Komputer", jumlah: 3, hargaSatuan: 6200000, noFaktur: "FK-2026-0440", dicatatOleh: "Budi Denka" }),
-      new BarangKeluar({ id: "out3", tanggal: hariLalu(4, 14), namaBarang: "SSD NVMe 512GB", jumlah: 1, alasan: "internal", catatan: "Dipakai untuk PC kasir toko", dicatatOleh: "Budi Denka" }),
-      new BarangMasuk({ id: "in4", tanggal: hariLalu(5, 10), namaBarang: "Mouse Wireless Logitech", supplier: "Toko Grosir IT", jumlah: 30, hargaSatuan: 110000, dicatatOleh: "Sari Admin" }),
+  private seedStockMovements(): void {
+    this.stockMovements.seed([
+      new StockOut({ id: "out1", date: daysAgo(1, 9), productName: "Keyboard Mechanical RGB", quantity: 1, reason: "rusak", note: "Switch tidak berfungsi, klaim garansi", recordedBy: "Sari Admin" }),
+      new StockIn({ id: "in1", date: daysAgo(1, 8), productName: "SSD NVMe 512GB", supplier: "PT Sumber Komputer", quantity: 10, unitPrice: 720000, invoiceNo: "FK-2026-0451", recordedBy: "Budi Denka" }),
+      new StockOut({ id: "out2", date: daysAgo(2, 10), productName: "Power Supply 500W", quantity: 2, reason: "retur", note: "Unit cacat produksi, dikembalikan ke supplier", recordedBy: "Budi Denka" }),
+      new StockIn({ id: "in2", date: daysAgo(2, 9), productName: "RAM DDR4 8GB", supplier: "PT Maju Teknologi", quantity: 15, unitPrice: 350000, invoiceNo: "FK-2026-0448", recordedBy: "Sari Admin" }),
+      new StockIn({ id: "in3", date: daysAgo(3, 11), productName: "Laptop ASUS Vivobook 14", supplier: "PT Sumber Komputer", quantity: 3, unitPrice: 6200000, invoiceNo: "FK-2026-0440", recordedBy: "Budi Denka" }),
+      new StockOut({ id: "out3", date: daysAgo(4, 14), productName: "SSD NVMe 512GB", quantity: 1, reason: "internal", note: "Dipakai untuk PC kasir toko", recordedBy: "Budi Denka" }),
+      new StockIn({ id: "in4", date: daysAgo(5, 10), productName: "Mouse Wireless Logitech", supplier: "Toko Grosir IT", quantity: 30, unitPrice: 110000, recordedBy: "Sari Admin" }),
     ]);
   }
 }

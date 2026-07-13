@@ -40,7 +40,34 @@ export default function App() {
     }
   }, [role, active]);
 
-  if (!auth.sudahLogin) {
+  // Geser dari tepi kiri ke kanan untuk membuka sidebar (mobile).
+  useEffect(() => {
+    let startX = 0;
+    let startY = 0;
+    let fromEdge = false;
+    const onStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      startX = t.clientX;
+      startY = t.clientY;
+      fromEdge = t.clientX < 28;
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (!fromEdge) return;
+      fromEdge = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      if (dx > 60 && Math.abs(dy) < 50) setMobileOpen(true);
+    };
+    document.addEventListener("touchstart", onStart, { passive: true });
+    document.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onStart);
+      document.removeEventListener("touchend", onEnd);
+    };
+  }, []);
+
+  if (!auth.isLoggedIn) {
     return <Login onLogin={() => setActive("dashboard")} />;
   }
 
@@ -58,7 +85,7 @@ export default function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
           role={role}
-          onRoleChange={(r) => auth.gantiRolePratinjau(r)}
+          onRoleChange={(r) => auth.setPreviewRole(r)}
           onToggleCollapse={() => setCollapsed((c) => !c)}
           onOpenMobile={() => setMobileOpen(true)}
           onLogout={() => auth.logout()}

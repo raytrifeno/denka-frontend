@@ -1,28 +1,28 @@
 import { Repository } from "../core/Repository";
-import { ServiceOrder, type StatusService } from "../entities/ServiceOrder";
+import { ServiceOrder, type ServiceStatus } from "../entities/ServiceOrder";
 
 export class ServiceRepository extends Repository<ServiceOrder> {
-  /** Nomor tiket berikutnya, diturunkan dari nomor tertinggi yang tersimpan. */
-  nomorBerikutnya(): string {
-    const tertinggi = this.rows.reduce((maks, service) => {
-      const angka = parseInt(service.nomor.replace(/\D/g, ""), 10);
-      return Number.isFinite(angka) ? Math.max(maks, angka) : maks;
+  /** Next ticket number, derived from the highest stored number. */
+  nextNumber(): string {
+    const highest = this.rows.reduce((max, service) => {
+      const n = parseInt(service.number.replace(/\D/g, ""), 10);
+      return Number.isFinite(n) ? Math.max(max, n) : max;
     }, 43);
-    return "#SRV-" + String(tertinggi + 1).padStart(4, "0");
+    return "#SRV-" + String(highest + 1).padStart(4, "0");
   }
 
-  byStatus(status: StatusService): ServiceOrder[] {
+  byStatus(status: ServiceStatus): ServiceOrder[] {
     return this.rows.filter((service) => service.status === status);
   }
 
-  sedangBerjalan(): ServiceOrder[] {
-    return this.rows.filter((service) => service.sedangBerjalan());
+  inProgress(): ServiceOrder[] {
+    return this.rows.filter((service) => service.isInProgress());
   }
 
-  cari(kataKunci: string, status?: StatusService | "all"): ServiceOrder[] {
+  search(keyword: string, status?: ServiceStatus | "all"): ServiceOrder[] {
     return this.rows.filter(
       (service) =>
-        service.cocok(kataKunci) && (!status || status === "all" || service.status === status),
+        service.matches(keyword) && (!status || status === "all" || service.status === status),
     );
   }
 }

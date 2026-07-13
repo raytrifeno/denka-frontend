@@ -39,16 +39,16 @@ import {
 } from "./ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "./ui/utils";
-import { LABEL_ALASAN, type AlasanKeluar } from "../../domain/entities/MutasiStok";
+import { LABEL_REASON, type StockOutReason } from "../../domain/entities/StockMovement";
 import {
-  StokController,
-  type ErrorStok,
-  type FormBarangKeluar,
-  type FormBarangMasuk,
-} from "../../domain/controllers/StokController";
+  StockController,
+  type StockErrors,
+  type StockOutForm,
+  type StockInForm,
+} from "../../domain/controllers/StockController";
 import { useController } from "../hooks/use-controller";
 
-const REASON_CLASS: Record<AlasanKeluar, string> = {
+const REASON_CLASS: Record<StockOutReason, string> = {
   rusak: "bg-destructive/10 text-destructive",
   retur: "bg-warning/15 text-warning",
   internal: "bg-info/15 text-info",
@@ -62,18 +62,18 @@ type Tab = "masuk" | "keluar";
 
 /**
  * StokBarang — boundary class mutasi stok.
- * Pencatatan masuk/keluar (termasuk update stok Barang) dilakukan StokController.
+ * Pencatatan masuk/keluar (termasuk update stok Barang) dilakukan StockController.
  */
 export function StokBarang() {
-  const controller = StokController.getInstance();
+  const controller = StockController.getInstance();
   useController(controller);
 
   const [tab, setTab] = useState<Tab>("masuk");
   const [inOpen, setInOpen] = useState(false);
   const [outOpen, setOutOpen] = useState(false);
 
-  const inMoves = controller.daftarBarangMasuk();
-  const outMoves = controller.daftarBarangKeluar();
+  const inMoves = controller.listStockIn();
+  const outMoves = controller.listStockOut();
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5 p-4 sm:p-6">
@@ -136,15 +136,15 @@ export function StokBarang() {
               ) : (
                 inMoves.map((m) => (
                   <TableRow key={m.id}>
-                    <TableCell className="text-muted-foreground">{fmtDate(m.tanggal)}</TableCell>
-                    <TableCell>{m.namaBarang}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtDate(m.date)}</TableCell>
+                    <TableCell>{m.productName}</TableCell>
                     <TableCell className="text-muted-foreground">{m.supplier}</TableCell>
                     <TableCell className="text-center">
-                      <Badge className="border-0 bg-success/15 text-success">+{m.jumlah}</Badge>
+                      <Badge className="border-0 bg-success/15 text-success">+{m.quantity}</Badge>
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground">{rupiah(m.hargaSatuan)}</TableCell>
-                    <TableCell className="text-right">{rupiah(m.totalBiaya())}</TableCell>
-                    <TableCell className="text-muted-foreground">{m.dicatatOleh}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{rupiah(m.unitPrice)}</TableCell>
+                    <TableCell className="text-right">{rupiah(m.totalCost())}</TableCell>
+                    <TableCell className="text-muted-foreground">{m.recordedBy}</TableCell>
                     <TableCell className="text-right">
                       <DetailButton />
                     </TableCell>
@@ -172,16 +172,16 @@ export function StokBarang() {
               ) : (
                 outMoves.map((m) => (
                   <TableRow key={m.id}>
-                    <TableCell className="text-muted-foreground">{fmtDate(m.tanggal)}</TableCell>
-                    <TableCell>{m.namaBarang}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtDate(m.date)}</TableCell>
+                    <TableCell>{m.productName}</TableCell>
                     <TableCell className="text-center">
-                      <Badge className="border-0 bg-destructive/10 text-destructive">-{m.jumlah}</Badge>
+                      <Badge className="border-0 bg-destructive/10 text-destructive">-{m.quantity}</Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge className={cn("border-0", REASON_CLASS[m.alasan])}>{m.labelAlasan()}</Badge>
+                      <Badge className={cn("border-0", REASON_CLASS[m.reason])}>{m.reasonLabel()}</Badge>
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-muted-foreground">{m.catatan || "-"}</TableCell>
-                    <TableCell className="text-muted-foreground">{m.dicatatOleh}</TableCell>
+                    <TableCell className="max-w-xs truncate text-muted-foreground">{m.note || "-"}</TableCell>
+                    <TableCell className="text-muted-foreground">{m.recordedBy}</TableCell>
                     <TableCell className="text-right">
                       <DetailButton />
                     </TableCell>
@@ -285,7 +285,7 @@ function ProductSelect({
   onChange: (v: string) => void;
   error?: boolean;
 }) {
-  const controller = StokController.getInstance();
+  const controller = StockController.getInstance();
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger
@@ -295,8 +295,8 @@ function ProductSelect({
         <SelectValue placeholder="Cari & pilih barang" />
       </SelectTrigger>
       <SelectContent>
-        {controller.pilihanBarang().map((p) => (
-          <SelectItem key={p.id} value={p.nama}>{p.nama}</SelectItem>
+        {controller.productOptions().map((p) => (
+          <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
         ))}
       </SelectContent>
     </Select>
@@ -337,7 +337,7 @@ function BarangMasukDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const controller = StokController.getInstance();
+  const controller = StockController.getInstance();
   const [product, setProduct] = useState("");
   const [supplier, setSupplier] = useState("");
   const [qty, setQty] = useState("");
@@ -345,7 +345,7 @@ function BarangMasukDialog({
   const [date, setDate] = useState<Date>(new Date());
   const [ref, setRef] = useState("");
   const [note, setNote] = useState("");
-  const [errors, setErrors] = useState<ErrorStok>({});
+  const [errors, setErrors] = useState<StockErrors>({});
 
   function reset() {
     setProduct(""); setSupplier(""); setQty(""); setPrice("");
@@ -355,26 +355,26 @@ function BarangMasukDialog({
   // otomatis isi harga beli terakhir dari controller saat barang dipilih
   function pickProduct(name: string) {
     setProduct(name);
-    setErrors((e) => ({ ...e, namaBarang: "" }));
-    const harga = controller.hargaBeliTerakhir(name);
-    if (harga !== null && !price) setPrice(String(harga));
+    setErrors((e) => ({ ...e, productName: "" }));
+    const lastPrice = controller.lastPurchasePrice(name);
+    if (lastPrice !== null && !price) setPrice(String(lastPrice));
   }
 
   const fmt = (digits: string) => (digits ? Number(digits).toLocaleString("id-ID") : "");
 
   function submit() {
-    const form: FormBarangMasuk = {
-      namaBarang: product,
+    const form: StockInForm = {
+      productName: product,
       supplier,
-      jumlah: qty,
-      hargaSatuan: price,
-      tanggal: date,
-      noFaktur: ref,
-      catatan: note,
+      quantity: qty,
+      unitPrice: price,
+      date: date,
+      invoiceNo: ref,
+      note: note,
     };
-    const hasil = controller.catatBarangMasuk(form);
-    if (!hasil.sukses) {
-      setErrors(hasil.errors);
+    const result = controller.recordStockIn(form);
+    if (!result.success) {
+      setErrors(result.errors);
       return;
     }
     reset();
@@ -395,8 +395,8 @@ function BarangMasukDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <Field label="Pilih Barang" error={errors.namaBarang}>
-            <ProductSelect value={product} onChange={pickProduct} error={!!errors.namaBarang} />
+          <Field label="Pilih Barang" error={errors.productName}>
+            <ProductSelect value={product} onChange={pickProduct} error={!!errors.productName} />
             <button type="button" className="text-xs text-primary hover:underline">
               Barang belum ada? Tambah baru
             </button>
@@ -411,7 +411,7 @@ function BarangMasukDialog({
                 <SelectValue placeholder="Cari & pilih supplier" />
               </SelectTrigger>
               <SelectContent>
-                {controller.daftarNamaSupplier().map((s) => (
+                {controller.supplierNames().map((s) => (
                   <SelectItem key={s} value={s}>{s}</SelectItem>
                 ))}
               </SelectContent>
@@ -419,27 +419,27 @@ function BarangMasukDialog({
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Jumlah Masuk" error={errors.jumlah}>
+            <Field label="Jumlah Masuk" error={errors.quantity}>
               <Input
                 type="number"
                 min={1}
                 value={qty}
-                onChange={(e) => { setQty(e.target.value); setErrors((x) => ({ ...x, jumlah: "" })); }}
+                onChange={(e) => { setQty(e.target.value); setErrors((x) => ({ ...x, quantity: "" })); }}
                 placeholder="0"
-                aria-invalid={!!errors.jumlah}
-                className={cn("bg-input-background", errors.jumlah && "border-destructive")}
+                aria-invalid={!!errors.quantity}
+                className={cn("bg-input-background", errors.quantity && "border-destructive")}
               />
             </Field>
-            <Field label="Harga Beli Satuan" error={errors.hargaSatuan}>
+            <Field label="Harga Beli Satuan" error={errors.unitPrice}>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rp</span>
                 <Input
                   inputMode="numeric"
                   value={fmt(price)}
-                  onChange={(e) => { setPrice(e.target.value.replace(/\D/g, "")); setErrors((x) => ({ ...x, hargaSatuan: "" })); }}
+                  onChange={(e) => { setPrice(e.target.value.replace(/\D/g, "")); setErrors((x) => ({ ...x, unitPrice: "" })); }}
                   placeholder="0"
-                  aria-invalid={!!errors.hargaSatuan}
-                  className={cn("bg-input-background pl-9", errors.hargaSatuan && "border-destructive")}
+                  aria-invalid={!!errors.unitPrice}
+                  className={cn("bg-input-background pl-9", errors.unitPrice && "border-destructive")}
                 />
               </div>
             </Field>
@@ -485,29 +485,29 @@ function BarangKeluarDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const controller = StokController.getInstance();
+  const controller = StockController.getInstance();
   const [product, setProduct] = useState("");
   const [qty, setQty] = useState("");
-  const [reason, setReason] = useState<AlasanKeluar | "">("");
+  const [reason, setReason] = useState<StockOutReason | "">("");
   const [note, setNote] = useState("");
-  const [errors, setErrors] = useState<ErrorStok>({});
+  const [errors, setErrors] = useState<StockErrors>({});
 
-  const available = product ? controller.stokTersedia(product) : null;
+  const available = product ? controller.availableStock(product) : null;
 
   function reset() {
     setProduct(""); setQty(""); setReason(""); setNote(""); setErrors({});
   }
 
   function submit() {
-    const form: FormBarangKeluar = {
-      namaBarang: product,
-      jumlah: qty,
-      alasan: reason,
-      catatan: note,
+    const form: StockOutForm = {
+      productName: product,
+      quantity: qty,
+      reason: reason,
+      note: note,
     };
-    const hasil = controller.catatBarangKeluar(form);
-    if (!hasil.sukses) {
-      setErrors(hasil.errors);
+    const result = controller.recordStockOut(form);
+    if (!result.success) {
+      setErrors(result.errors);
       return;
     }
     reset();
@@ -530,41 +530,41 @@ function BarangKeluarDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <Field label="Pilih Barang" error={errors.namaBarang}>
+          <Field label="Pilih Barang" error={errors.productName}>
             <ProductSelect
               value={product}
-              onChange={(v) => { setProduct(v); setErrors((e) => ({ ...e, namaBarang: "", jumlah: "" })); }}
-              error={!!errors.namaBarang}
+              onChange={(v) => { setProduct(v); setErrors((e) => ({ ...e, productName: "", quantity: "" })); }}
+              error={!!errors.productName}
             />
           </Field>
 
           <Field
             label="Jumlah Keluar"
-            error={errors.jumlah}
+            error={errors.quantity}
             hint={available !== null ? `Stok tersedia: ${available}` : undefined}
           >
             <Input
               type="number"
               min={1}
               value={qty}
-              onChange={(e) => { setQty(e.target.value); setErrors((x) => ({ ...x, jumlah: "" })); }}
+              onChange={(e) => { setQty(e.target.value); setErrors((x) => ({ ...x, quantity: "" })); }}
               placeholder="0"
-              aria-invalid={!!errors.jumlah}
-              className={cn("bg-input-background", errors.jumlah && "border-destructive")}
+              aria-invalid={!!errors.quantity}
+              className={cn("bg-input-background", errors.quantity && "border-destructive")}
             />
           </Field>
 
-          <Field label="Alasan" error={errors.alasan}>
-            <Select value={reason} onValueChange={(v) => { setReason(v as AlasanKeluar); setErrors((e) => ({ ...e, alasan: "" })); }}>
+          <Field label="Alasan" error={errors.reason}>
+            <Select value={reason} onValueChange={(v) => { setReason(v as StockOutReason); setErrors((e) => ({ ...e, reason: "" })); }}>
               <SelectTrigger
-                aria-invalid={!!errors.alasan}
-                className={cn("w-full bg-input-background", errors.alasan && "border-destructive")}
+                aria-invalid={!!errors.reason}
+                className={cn("w-full bg-input-background", errors.reason && "border-destructive")}
               >
                 <SelectValue placeholder="Pilih alasan" />
               </SelectTrigger>
               <SelectContent>
-                {(Object.keys(LABEL_ALASAN) as AlasanKeluar[]).map((alasan) => (
-                  <SelectItem key={alasan} value={alasan}>{LABEL_ALASAN[alasan]}</SelectItem>
+                {(Object.keys(LABEL_REASON) as StockOutReason[]).map((reason) => (
+                  <SelectItem key={reason} value={reason}>{LABEL_REASON[reason]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

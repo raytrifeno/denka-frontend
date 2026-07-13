@@ -1,6 +1,6 @@
 // Aksi keluar aplikasi: kirim struk via WhatsApp (layanan whatsapp-web.js) & cetak.
 
-import { PengaturanController } from "../domain/controllers/PengaturanController";
+import { SettingsController } from "../domain/controllers/SettingsController";
 
 /**
  * Base URL layanan WhatsApp. Prioritas: setelan aplikasi (bisa diisi IP LAN PC
@@ -8,7 +8,7 @@ import { PengaturanController } from "../domain/controllers/PengaturanController
  * perubahan setelan langsung berlaku tanpa reload.
  */
 function whatsappBase(): string {
-  const custom = PengaturanController.getInstance().whatsapp.serverUrl?.trim();
+  const custom = SettingsController.getInstance().whatsapp.serverUrl?.trim();
   return (custom || import.meta.env.VITE_WHATSAPP_URL || "http://localhost:3100").replace(/\/$/, "");
 }
 
@@ -39,18 +39,18 @@ export async function logoutWhatsApp(): Promise<void> {
 
 // Data struk terstruktur — layanan yang merender jadi PDF.
 export type ReceiptData = {
-  store: { nama: string; alamat: string; telepon: string; tampilkanAlamat: boolean };
-  nomor: string;
-  kasir: string;
-  tanggal: string;
-  items: { nama: string; jumlah: number; harga: number; subtotal: number }[];
+  store: { name: string; address: string; phone: string; showAddress: boolean };
+  number: string;
+  cashier: string;
+  date: string;
+  items: { name: string; quantity: number; price: number; subtotal: number }[];
   subtotal: number;
-  diskon: number;
+  discount: number;
   total: number;
-  metode: string;
-  tunai: boolean;
-  uangDiterima: number;
-  kembalian: number;
+  method: string;
+  isCash: boolean;
+  amountPaid: number;
+  change: number;
   footer: string;
 };
 
