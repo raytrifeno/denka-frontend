@@ -54,7 +54,7 @@ import { toast } from "sonner";
 const rupiah = (n: number) => "Rp " + n.toLocaleString("id-ID");
 const fmtDate = (d: Date) => format(d, "dd MMM yyyy", { locale: idLocale });
 
-function tujuhHariLalu(): Date {
+function sevenDaysAgo(): Date {
   const d = new Date();
   d.setDate(d.getDate() - 6);
   return d;
@@ -83,14 +83,14 @@ export function Laporan({ role }: { role: Role }) {
   const tabs = ALL_TABS.filter((t) => !t.ownerOnly || role === "pemilik");
   const [tab, setTab] = useState<Tab>("penjualan");
   const [range, setRange] = useState<DateRange | undefined>({
-    from: tujuhHariLalu(),
+    from: sevenDaysAgo(),
     to: new Date(),
   });
   const [exporting, setExporting] = useState(false);
 
   async function exportExcel() {
     setExporting(true);
-    const result = await exportToExcel();
+    const result = await exportToExcel(range?.from, range?.to ?? range?.from);
     setExporting(false);
     if (result.success) toast.success(result.message);
     else toast.error(result.message);
@@ -98,8 +98,8 @@ export function Laporan({ role }: { role: Role }) {
 
   // guard: jika non-pemilik masih memilih tab keuntungan
   const activeTab = tabs.some((t) => t.id === tab) ? tab : "penjualan";
-  const dari = range?.from;
-  const sampai = range?.to ?? range?.from;
+  const from = range?.from;
+  const to = range?.to ?? range?.from;
 
   return (
     <div id="print-area" className="mx-auto w-full max-w-7xl space-y-5 p-4 sm:p-6">
@@ -148,16 +148,16 @@ export function Laporan({ role }: { role: Role }) {
       </div>
 
       {/* content */}
-      {activeTab === "penjualan" && <SalesReport dari={dari} sampai={sampai} />}
-      {activeTab === "stok" && <StockReport dari={dari} sampai={sampai} />}
-      {activeTab === "terlaris" && <TopProductsReport dari={dari} sampai={sampai} />}
-      {activeTab === "keuntungan" && role === "pemilik" && <ProfitReport dari={dari} sampai={sampai} />}
-      {activeTab === "service" && <ServiceReport dari={dari} sampai={sampai} />}
+      {activeTab === "penjualan" && <SalesReport from={from} to={to} />}
+      {activeTab === "stok" && <StockReport from={from} to={to} />}
+      {activeTab === "terlaris" && <TopProductsReport from={from} to={to} />}
+      {activeTab === "keuntungan" && role === "pemilik" && <ProfitReport from={from} to={to} />}
+      {activeTab === "service" && <ServiceReport from={from} to={to} />}
     </div>
   );
 }
 
-type RangeProps = { dari?: Date; sampai?: Date };
+type RangeProps = { from?: Date; to?: Date };
 
 // ---------- date range picker ----------
 function DateRangePicker({
@@ -234,9 +234,9 @@ const tipStyle = { borderRadius: 12, border: "1px solid var(--border)", fontSize
 const yRupiah = (v: number) => (v >= 1000000 ? `${v / 1000000}jt` : `${v / 1000}rb`);
 
 // ---------- sales report ----------
-function SalesReport({ dari, sampai }: RangeProps) {
+function SalesReport({ from, to }: RangeProps) {
   const report = ReportController.getInstance();
-  const data = report.salesReport(dari, sampai);
+  const data = report.salesReport(from, to);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -303,9 +303,9 @@ function stockStatus(end: number, min: number) {
   if (end <= min) return { label: "Menipis", className: "bg-warning/15 text-warning" };
   return { label: "Aman", className: "bg-success/15 text-success" };
 }
-function StockReport({ dari, sampai }: RangeProps) {
+function StockReport({ from, to }: RangeProps) {
   const report = ReportController.getInstance();
-  const rows = report.stockReport(dari, sampai);
+  const rows = report.stockReport(from, to);
   return (
     <TableCard title="Mutasi Stok per Barang">
       <Table>
@@ -340,9 +340,9 @@ function StockReport({ dari, sampai }: RangeProps) {
 }
 
 // ---------- top products ----------
-function TopProductsReport({ dari, sampai }: RangeProps) {
+function TopProductsReport({ from, to }: RangeProps) {
   const report = ReportController.getInstance();
-  const rows = report.topProducts(10, dari, sampai);
+  const rows = report.topProducts(10, from, to);
   return (
     <div className="space-y-5">
       <ChartCard title="Top 10 Barang Terlaris">
@@ -399,9 +399,9 @@ function TopProductsReport({ dari, sampai }: RangeProps) {
 }
 
 // ---------- profit report ----------
-function ProfitReport({ dari, sampai }: RangeProps) {
+function ProfitReport({ from, to }: RangeProps) {
   const report = ReportController.getInstance();
-  const data = report.profitReport(dari, sampai);
+  const data = report.profitReport(from, to);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -475,9 +475,9 @@ const SVC_BADGE: Record<ServiceStatus, { label: string; className: string }> = {
   diambil: { label: "Sudah Diambil", className: "bg-info/15 text-info" },
 };
 
-function ServiceReport({ dari, sampai }: RangeProps) {
+function ServiceReport({ from, to }: RangeProps) {
   const report = ReportController.getInstance();
-  const data = report.serviceReport(dari, sampai);
+  const data = report.serviceReport(from, to);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -34,10 +34,18 @@ function movementNote(m: StockMovement): string {
 }
 
 /** Rakit workbook multi-sheet dari data lokal (bekerja penuh saat offline). */
-function buildWorkbook(ExcelJS: ExcelNS): Workbook {
+function buildWorkbook(ExcelJS: ExcelNS, from?: Date, to?: Date): Workbook {
   const db = Database.getInstance();
   const wb = new ExcelJS.Workbook();
   wb.created = new Date();
+
+  // Batasi sheet berbasis tanggal ke rentang yang dipilih (jika ada).
+  const fromTs = from ? new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime() : -Infinity;
+  const toTs = to ? new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999).getTime() : Infinity;
+  const inRange = (d: Date) => d.getTime() >= fromTs && d.getTime() <= toTs;
+  const sales = db.sales.findAll().filter((s) => inRange(s.date));
+  const services = db.services.findAll().filter((s) => inRange(s.receivedAt));
+  const movements = db.stockMovements.findAll().filter((m) => inRange(m.date));
 
   const salesSheet = wb.addWorksheet("Penjualan");
   salesSheet.columns = [
@@ -50,7 +58,7 @@ function buildWorkbook(ExcelJS: ExcelNS): Workbook {
     { header: "Diskon", key: "discount", width: 14, style: { numFmt: "#,##0" } },
     { header: "Total", key: "total", width: 16, style: { numFmt: "#,##0" } },
   ];
-  for (const t of db.sales.findAll()) {
+  for (const t of sales) {
     salesSheet.addRow({
       number: t.number,
       date: formatDate(t.date),
@@ -71,7 +79,7 @@ function buildWorkbook(ExcelJS: ExcelNS): Workbook {
     { header: "Jumlah", key: "quantity", width: 10 },
     { header: "Subtotal", key: "subtotal", width: 16, style: { numFmt: "#,##0" } },
   ];
-  for (const t of db.sales.findAll()) {
+  for (const t of sales) {
     for (const d of t.items) {
       itemsSheet.addRow({
         number: t.number,
@@ -119,7 +127,7 @@ function buildWorkbook(ExcelJS: ExcelNS): Workbook {
     { header: "Teknisi", key: "technician", width: 18 },
     { header: "Total Biaya", key: "cost", width: 16, style: { numFmt: "#,##0" } },
   ];
-  for (const s of db.services.findAll()) {
+  for (const s of services) {
     serviceSheet.addRow({
       number: s.number,
       date: formatDate(s.receivedAt),
@@ -143,7 +151,7 @@ function buildWorkbook(ExcelJS: ExcelNS): Workbook {
     { header: "Catatan", key: "notes", width: 30 },
     { header: "Dicatat Oleh", key: "by", width: 18 },
   ];
-  for (const m of db.stockMovements.findAll()) {
+  for (const m of movements) {
     movementsSheet.addRow({
       kind: m.kind === "masuk" ? "Masuk" : "Keluar",
       date: formatDate(m.date),
@@ -159,14 +167,20 @@ function buildWorkbook(ExcelJS: ExcelNS): Workbook {
   return wb;
 }
 
-/** Ekspor seluruh data ke berkas .xlsx (dialog simpan di desktop, unduh di browser). */
-export async function exportToExcel(): Promise<ExportResult> {
+/**
+ * Ekspor data ke berkas .xlsx (dialog simpan di desktop, unduh di browser).
+ * Jika `from`/`to` diisi, sheet berbasis tanggal (penjualan, item, service,
+ * mutasi) dibatasi ke rentang itu; sheet Barang selalu stok terkini.
+ */
+export async function exportToExcel(from?: Date, to?: Date): Promise<ExportResult> {
   try {
     const mod = (await import("exceljs")) as ExcelNS & { default?: ExcelNS };
     const ExcelJS: ExcelNS = mod.default ?? mod;
-    const wb = buildWorkbook(ExcelJS);
+    const wb = buildWorkbook(ExcelJS, from, to);
     const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;
-    const fileName = `denka-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const fileName =
+      from && to ? `denka-laporan-${iso(from)}_${iso(to)}.xlsx` : `denka-${iso(new Date())}.xlsx`;
 
     if (isTauri()) {
       const path = await save({

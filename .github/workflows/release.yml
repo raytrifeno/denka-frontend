@@ -1,0 +1,201 @@
+name: Release
+
+# Build semua installer & app: Windows (.exe wizard + .msi), macOS (.dmg),
+# Linux (.AppImage/.deb/.rpm), Android (.apk), iOS (.ipa).
+# Jalan otomatis saat push tag `v*` (mis. `git tag v0.1.0 && git push --tags`),
+# atau manual dari tab Actions (Run workflow).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.rel.outputs.id }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
+      - id: rel
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: Denka ${{ steps.meta.outputs.tag }}
+          draft: true
+          body: |
+            **Denka Computer — POS & Service**
+
+            | Platform | Berkas |
+            |---|---|
+            | Windows | `.exe` (installer wizard) atau `.msi` |
+            | macOS | `.dmg` (seret ke Applications) |
+            | Linux | `.AppImage`, `.deb`, `.rpm` |
+            | Android | `.apk` |
+            | iOS | `.ipa` (butuh Apple Developer signing) |
+
+  # ---------- Desktop: Windows / macOS / Linux ----------
+  desktop:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            args: ""
+          - os: windows-latest
+            args: ""
+          - os: macos-latest
+            args: "--target universal-apple-darwin"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential file libssl-dev libxdo-dev
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: ${{ matrix.args }}
+
+  # ---------- Android APK ----------
+  android:
+    needs: create-release
+    runs-on: ubuntu-22.04
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+      - uses: android-actions/setup-android@v3
+      - name: Install NDK
+        run: sdkmanager "ndk;28.2.13676358" "platforms;android-34" "build-tools;34.0.0"
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      # Rilis bertanda tangan hanya jika secret keystore disediakan; kalau tidak,
+      # bangun APK debug (tetap bisa dipasang untuk uji coba).
+      - name: Write release keystore
+        if: env.HAS_KEYSTORE == 'true'
+        run: |
+          KS="$GITHUB_WORKSPACE/src-tauri/gen/android/denka.keystore"
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$KS"
+          cat > "$GITHUB_WORKSPACE/src-tauri/gen/android/keystore.properties" <<EOF
+          storeFile=$KS
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          password=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+      - name: Build APK
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
+        run: |
+          if [ "$HAS_KEYSTORE" = "true" ]; then
+            pnpm tauri android build --apk
+          else
+            pnpm tauri android build --apk --debug
+          fi
+      - name: Upload APK to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p out
+          find src-tauri/gen/android -name "*.apk" -exec cp {} out/ \;
+          gh release upload "${{ needs.create-release.outputs.tag }}" out/*.apk --clobber
+
+  # ---------- iOS IPA (butuh Apple Developer account) ----------
+  # iOS TIDAK bisa menghasilkan .ipa yang bisa dipasang tanpa signing Apple
+  # (sertifikat + provisioning profile dari akun Apple Developer berbayar).
+  # Job ini otomatis dilewati kalau secret Apple belum diisi, dan tidak
+  # menggagalkan workflow (continue-on-error).
+  ios:
+    needs: create-release
+    runs-on: macos-latest
+    continue-on-error: true
+    if: ${{ vars.ENABLE_IOS == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Import Apple signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 -d > cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+      - name: Build IPA
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          pnpm tauri ios init
+          pnpm tauri ios build --export-method app-store-connect
+      - name: Upload IPA to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p out
+          find src-tauri/gen/apple -name "*.ipa" -exec cp {} out/ \;
+          gh release upload "${{ needs.create-release.outputs.tag }}" out/*.ipa --clobber

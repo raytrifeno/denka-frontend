@@ -23,8 +23,6 @@ export class AuthController extends Observable {
 
   private db = Database.getInstance();
   private _currentUser: User | null = null;
-  /** Demo "view as role" feature in the topbar. */
-  private _previewRole: UserRole | null = null;
 
   private constructor() {
     super();
@@ -68,7 +66,6 @@ export class AuthController extends Observable {
     user.recordLogin();
     this.db.users.touch();
     this._currentUser = user;
-    this._previewRole = null;
     this.clearStoredSession();
     LocalStore.save(KEY_SESSION, { userId: user.id }, !rememberMe);
     this.notify();
@@ -77,7 +74,6 @@ export class AuthController extends Observable {
 
   logout(): void {
     this._currentUser = null;
-    this._previewRole = null;
     this.clearStoredSession();
     this.notify();
   }
@@ -107,13 +103,8 @@ export class AuthController extends Observable {
     return this._currentUser?.name ?? "-";
   }
 
-  /** Effective role used by the UI (accounts for preview mode). */
+  /** The signed-in user's role. Not switchable from the UI. */
   get role(): UserRole {
-    return this._previewRole ?? this._currentUser?.role ?? "admin";
-  }
-
-  setPreviewRole(role: UserRole): void {
-    this._previewRole = role;
-    this.notify();
+    return this._currentUser?.role ?? "admin";
   }
 }

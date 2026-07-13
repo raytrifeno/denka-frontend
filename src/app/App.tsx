@@ -85,7 +85,6 @@ export default function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
           role={role}
-          onRoleChange={(r) => auth.setPreviewRole(r)}
           onToggleCollapse={() => setCollapsed((c) => !c)}
           onOpenMobile={() => setMobileOpen(true)}
           onLogout={() => auth.logout()}
@@ -101,7 +100,7 @@ export default function App() {
             <StokBarang />
           ) : active === "service" ? (
             <Service />
-          ) : active === "laporan" ? (
+          ) : active === "laporan" && role === "pemilik" ? (
             <Laporan role={role} />
           ) : active === "supplier" ? (
             <DataSupplier />

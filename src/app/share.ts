@@ -56,12 +56,15 @@ export type ReceiptData = {
 
 /** Kirim struk sebagai berkas PDF (dokumen WhatsApp), bukan pesan teks. */
 export async function sendReceiptPdfWhatsApp(phone: string, receipt: ReceiptData): Promise<void> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error("Tidak ada koneksi. Kirim struk WhatsApp butuh jaringan aktif.");
+  }
   const res = await fetch(`${whatsappBase()}/send-receipt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone, receipt }),
   }).catch(() => {
-    throw new Error("Layanan WhatsApp tidak terjangkau. Jalankan layanan WhatsApp dulu.");
+    throw new Error("Layanan WhatsApp belum aktif. Buka aplikasi Layanan WhatsApp di PC dulu.");
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
@@ -74,12 +77,15 @@ export async function sendReceiptPdfWhatsApp(phone: string, receipt: ReceiptData
  * Layanan dijalankan dari repo backend: `pnpm whatsapp`.
  */
 export async function sendReceiptWhatsApp(phone: string, message: string): Promise<void> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error("Tidak ada koneksi. Kirim WhatsApp butuh jaringan aktif.");
+  }
   const res = await fetch(`${whatsappBase()}/send`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone, message }),
   }).catch(() => {
-    throw new Error("Layanan WhatsApp tidak terjangkau. Jalankan `pnpm whatsapp` di backend.");
+    throw new Error("Layanan WhatsApp belum aktif. Buka aplikasi Layanan WhatsApp di PC dulu.");
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {

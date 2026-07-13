@@ -60,6 +60,7 @@ import {
   sendReceiptWhatsApp,
   type WhatsAppState,
 } from "../share";
+import type { Role } from "../navigation";
 import { AuthController } from "../../domain/controllers/AuthController";
 import { UserController } from "../../domain/controllers/UserController";
 import { SettingsController } from "../../domain/controllers/SettingsController";
@@ -69,13 +70,14 @@ import { useController } from "../hooks/use-controller";
 
 type TabId = "toko" | "struk" | "whatsapp" | "kategori" | "akun" | "data";
 
-const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
-  { id: "toko", label: "Profil Toko", icon: Store },
-  { id: "struk", label: "Pengaturan Struk", icon: ReceiptText },
-  { id: "whatsapp", label: "Integrasi WhatsApp", icon: MessageCircle },
-  { id: "kategori", label: "Kategori Barang", icon: Tags },
-  { id: "akun", label: "Akun Saya", icon: UserCog },
-  { id: "data", label: "Data & Cadangan", icon: DatabaseBackup },
+// Konfigurasi toko & data hanya untuk Pemilik; Admin hanya kelola akunnya.
+const TABS: { id: TabId; label: string; icon: LucideIcon; roles: Role[] }[] = [
+  { id: "toko", label: "Profil Toko", icon: Store, roles: ["pemilik"] },
+  { id: "struk", label: "Pengaturan Struk", icon: ReceiptText, roles: ["pemilik"] },
+  { id: "whatsapp", label: "Integrasi WhatsApp", icon: MessageCircle, roles: ["pemilik"] },
+  { id: "kategori", label: "Kategori Barang", icon: Tags, roles: ["pemilik"] },
+  { id: "akun", label: "Akun Saya", icon: UserCog, roles: ["pemilik", "admin"] },
+  { id: "data", label: "Data & Cadangan", icon: DatabaseBackup, roles: ["pemilik"] },
 ];
 
 /**
@@ -84,7 +86,9 @@ const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
  * penyimpanan lokal); tab Akun terhubung ke pengguna yang sedang login.
  */
 export function Pengaturan() {
-  const [tab, setTab] = useState<TabId>("toko");
+  const role = AuthController.getInstance().role;
+  const visibleTabs = TABS.filter((t) => t.roles.includes(role));
+  const [tab, setTab] = useState<TabId>(visibleTabs[0]?.id ?? "akun");
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5 p-4 sm:p-6">
@@ -99,7 +103,7 @@ export function Pengaturan() {
         <div className="flex flex-col md:flex-row">
           {/* vertical tabs */}
           <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-3 md:w-60 md:flex-col md:overflow-visible md:border-b-0 md:border-r">
-            {TABS.map((t) => {
+            {visibleTabs.map((t) => {
               const Icon = t.icon;
               return (
                 <button
@@ -301,7 +305,7 @@ const WA_VARS = [
 
 const WA_STATUS_META: Record<WhatsAppState, { label: string; desc: string }> = {
   ready: { label: "Terhubung", desc: "Struk siap dikirim otomatis via WhatsApp." },
-  offline: { label: "Layanan mati", desc: "Jalankan `pnpm whatsapp` di backend dulu." },
+  offline: { label: "Layanan mati", desc: "Buka aplikasi Layanan WhatsApp (Denka-WhatsApp) di PC dulu." },
   loading: { label: "Belum terhubung", desc: "Hubungkan untuk mulai mengirim struk." },
   qr: { label: "Menunggu dipindai", desc: "Buka dialog lalu pindai QR dengan HP." },
   authenticated: { label: "Menyambungkan…", desc: "Sedang menyiapkan sesi." },
@@ -507,9 +511,9 @@ function WhatsAppSection() {
             {status.state === "offline" ? (
               <div className="text-center text-sm text-muted-foreground">
                 <WifiOff className="mx-auto mb-2 size-8" />
-                Layanan WhatsApp belum berjalan.
+                Layanan WhatsApp belum aktif.
                 <br />
-                Jalankan <code>pnpm whatsapp</code> di backend.
+                Buka aplikasi Layanan WhatsApp di PC, lalu coba lagi.
               </div>
             ) : status.state === "auth_failure" ? (
               <div className="text-center text-sm text-destructive">

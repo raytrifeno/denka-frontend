@@ -4,7 +4,6 @@ import {
   PanelLeft,
   ChevronDown,
   LogOut,
-  UserCog,
   Package2,
   Wrench,
 } from "lucide-react";
@@ -18,8 +17,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
@@ -36,7 +33,6 @@ import { SyncIndicator } from "./sync-indicator";
 
 type TopbarProps = {
   role: Role;
-  onRoleChange: (role: Role) => void;
   onToggleCollapse: () => void;
   onOpenMobile: () => void;
   onLogout: () => void;
@@ -46,7 +42,7 @@ type TopbarProps = {
  * Topbar — boundary class. Identitas pengguna dari AuthController,
  * notifications (stok menipis & service) dari ReportController.
  */
-export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onLogout }: TopbarProps) {
+export function Topbar({ role, onToggleCollapse, onOpenMobile, onLogout }: TopbarProps) {
   const auth = AuthController.getInstance();
   const report = ReportController.getInstance();
   useController(auth);
@@ -196,23 +192,6 @@ export function Topbar({ role, onRoleChange, onToggleCollapse, onOpenMobile, onL
                 </p>
               </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs text-muted-foreground">
-              Lihat sebagai role
-            </DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={role}
-              onValueChange={(v) => onRoleChange(v as Role)}
-            >
-              <DropdownMenuRadioItem value="pemilik">
-                <UserCog className="mr-2 size-4" />
-                Pemilik
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="admin">
-                <UserCog className="mr-2 size-4" />
-                Admin
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={onLogout}>
               <LogOut className="mr-2 size-4" />
