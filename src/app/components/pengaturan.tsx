@@ -22,7 +22,6 @@ import {
   Loader2,
   QrCode,
   Unplug,
-  WifiOff,
   AlertCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -58,6 +57,7 @@ import {
   getWhatsAppStatus,
   logoutWhatsApp,
   sendReceiptWhatsApp,
+  startWhatsAppService,
   type WhatsAppState,
 } from "../share";
 import type { Role } from "../navigation";
@@ -305,7 +305,7 @@ const WA_VARS = [
 
 const WA_STATUS_META: Record<WhatsAppState, { label: string; desc: string }> = {
   ready: { label: "Terhubung", desc: "Struk siap dikirim otomatis via WhatsApp." },
-  offline: { label: "Layanan mati", desc: "Buka aplikasi Layanan WhatsApp (Denka-WhatsApp) di PC dulu." },
+  offline: { label: "Belum terhubung", desc: "Klik Hubungkan — layanan dinyalakan otomatis." },
   loading: { label: "Belum terhubung", desc: "Hubungkan untuk mulai mengirim struk." },
   qr: { label: "Menunggu dipindai", desc: "Buka dialog lalu pindai QR dengan HP." },
   authenticated: { label: "Menyambungkan…", desc: "Sedang menyiapkan sesi." },
@@ -326,8 +326,25 @@ function WhatsAppSection() {
     qr: null,
   });
   const [qrOpen, setQrOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const connected = status.state === "ready";
+
+  // Hubungkan = nyalakan layanan lalu tunggu QR-nya. Tanpa terminal.
+  async function connect() {
+    setQrOpen(true);
+    setStartError(null);
+    setStarting(true);
+    try {
+      await startWhatsAppService();
+      setStatus({ state: "loading", qr: null });
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : "Gagal menyalakan layanan WhatsApp.");
+    } finally {
+      setStarting(false);
+    }
+  }
 
   // Polling status layanan — lebih cepat saat dialog QR terbuka.
   useEffect(() => {
@@ -429,7 +446,7 @@ function WhatsAppSection() {
             <Button
               size="sm"
               className="shrink-0 bg-primary-700 text-white hover:bg-primary-500"
-              onClick={() => setQrOpen(true)}
+              onClick={connect}
             >
               <QrCode className="size-4" />
               Hubungkan
@@ -508,12 +525,19 @@ function WhatsAppSection() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 py-2">
-            {status.state === "offline" ? (
-              <div className="text-center text-sm text-muted-foreground">
-                <WifiOff className="mx-auto mb-2 size-8" />
-                Layanan WhatsApp belum aktif.
-                <br />
-                Buka aplikasi Layanan WhatsApp di PC, lalu coba lagi.
+            {startError ? (
+              <div className="flex flex-col items-center gap-3 px-2 text-center text-sm text-destructive">
+                <AlertCircle className="size-8" />
+                <p>{startError}</p>
+                <Button variant="outline" size="sm" onClick={connect}>
+                  Coba lagi
+                </Button>
+              </div>
+            ) : starting || status.state === "offline" ? (
+              <div className="flex flex-col items-center gap-2 text-center text-sm text-muted-foreground">
+                <Loader2 className="size-8 animate-spin" />
+                Menyalakan layanan WhatsApp…
+                <span className="text-xs">Saat pertama kali, ini bisa memakan waktu sebentar.</span>
               </div>
             ) : status.state === "auth_failure" ? (
               <div className="text-center text-sm text-destructive">

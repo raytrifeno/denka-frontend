@@ -12,6 +12,26 @@ function whatsappBase(): string {
   return (custom || import.meta.env.VITE_WHATSAPP_URL || "http://localhost:3100").replace(/\/$/, "");
 }
 
+/** Layanan berjalan di PC ini (bukan URL LAN milik PC lain). */
+function isLocalService(): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(whatsappBase());
+}
+
+/**
+ * Nyalakan layanan WhatsApp lokal lewat aplikasi desktop — pengguna tidak perlu
+ * membuka terminal. Aman dipanggil berulang: kalau sudah jalan, langsung selesai.
+ */
+export async function startWhatsAppService(): Promise<void> {
+  const desktop = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  if (!desktop || !isLocalService()) {
+    throw new Error(
+      "Hubungkan WhatsApp lewat aplikasi Denka di PC. Setelah tersambung di PC, HP bisa ikut memakainya.",
+    );
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("start_whatsapp_service");
+}
+
 export type WhatsAppState =
   | "loading"
   | "qr"
@@ -64,7 +84,7 @@ export async function sendReceiptPdfWhatsApp(phone: string, receipt: ReceiptData
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone, receipt }),
   }).catch(() => {
-    throw new Error("Layanan WhatsApp belum aktif. Buka aplikasi Layanan WhatsApp di PC dulu.");
+    throw new Error("WhatsApp belum terhubung. Buka Pengaturan → Integrasi WhatsApp, lalu klik Hubungkan.");
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
@@ -74,7 +94,7 @@ export async function sendReceiptPdfWhatsApp(phone: string, receipt: ReceiptData
 
 /**
  * Kirim struk ke nomor pelanggan lewat layanan WhatsApp lokal (whatsapp-web.js).
- * Layanan dijalankan dari repo backend: `pnpm whatsapp`.
+ * Layanan dinyalakan otomatis oleh aplikasi desktop lewat startWhatsAppService().
  */
 export async function sendReceiptWhatsApp(phone: string, message: string): Promise<void> {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -85,7 +105,7 @@ export async function sendReceiptWhatsApp(phone: string, message: string): Promi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone, message }),
   }).catch(() => {
-    throw new Error("Layanan WhatsApp belum aktif. Buka aplikasi Layanan WhatsApp di PC dulu.");
+    throw new Error("WhatsApp belum terhubung. Buka Pengaturan → Integrasi WhatsApp, lalu klik Hubungkan.");
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {

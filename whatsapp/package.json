@@ -1,0 +1,14 @@
+{
+  "name": "denka-whatsapp-service",
+  "private": true,
+  "type": "module",
+  "description": "Local WhatsApp receipt sender. Launched automatically by the Denka desktop app.",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "pdfkit": "^0.15.2",
+    "qrcode": "^1.5.4",
+    "whatsapp-web.js": "^1.26.0"
+  }
+}

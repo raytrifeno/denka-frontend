@@ -46,7 +46,9 @@
         "headerImage": "installer/header.bmp",
         "sidebarImage": "installer/sidebar.bmp",
         "installMode": "both",
-        "languages": ["English"],
+        "languages": [
+          "English"
+        ],
         "displayLanguageSelector": false
       }
     },
@@ -54,13 +56,25 @@
       "minimumSystemVersion": "10.15",
       "dmg": {
         "background": "installer/dmg-background.png",
-        "windowSize": { "width": 660, "height": 400 },
-        "appPosition": { "x": 180, "y": 170 },
-        "applicationFolderPosition": { "x": 480, "y": 170 }
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        }
       }
     },
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "resources": {
+      "../whatsapp": "whatsapp"
     }
   }
 }

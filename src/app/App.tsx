@@ -102,7 +102,7 @@ export default function App() {
             <Service />
           ) : active === "laporan" && role === "pemilik" ? (
             <Laporan role={role} />
-          ) : active === "supplier" ? (
+          ) : active === "supplier" && role === "pemilik" ? (
             <DataSupplier />
           ) : active === "pengguna" && role === "pemilik" ? (
             <ManajemenPengguna />

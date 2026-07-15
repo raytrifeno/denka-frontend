@@ -1,5 +1,8 @@
 use tauri_plugin_sql::{Builder as SqlBuilder, Migration, MigrationKind};
 
+#[cfg(desktop)]
+mod whatsapp;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![Migration {
@@ -9,7 +12,16 @@ pub fn run() {
         kind: MigrationKind::Up,
     }];
 
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    {
+        builder = builder.invoke_handler(tauri::generate_handler![
+            whatsapp::start_whatsapp_service
+        ]);
+    }
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(

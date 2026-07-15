@@ -72,10 +72,10 @@ export const NAV_ITEMS: MenuItem[] = [
   {
     id: "supplier",
     label: "Data Supplier",
-    description: "Daftar pemasok barang dan informasi kontak supplier.",
+    description: "Daftar pemasok barang dan informasi kontak supplier (khusus Pemilik).",
     icon: Truck,
     group: "Inventori",
-    roles: ["pemilik", "admin"],
+    roles: ["pemilik"],
   },
   // ----- Manajemen: khusus pengelolaan toko -----
   {

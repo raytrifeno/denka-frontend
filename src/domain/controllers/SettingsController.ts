@@ -19,7 +19,7 @@ export interface WhatsAppSettings {
   enabled: boolean;
   template: string;
   // whatsapp-web.js service URL. Empty = default (VITE_WHATSAPP_URL / localhost).
-  // On a phone, set the LAN IP of the PC running `pnpm whatsapp`.
+  // On a phone, set the LAN IP of the PC running the Denka desktop app.
   serverUrl?: string;
 }
 
