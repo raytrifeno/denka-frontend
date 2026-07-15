@@ -54,43 +54,71 @@ function findBrowser() {
 // Bump lewat env WA_WEB_VERSION jika suatu saat perlu versi lebih baru.
 const WA_WEB_VERSION = process.env.WA_WEB_VERSION || "2.3000.1043020865-alpha";
 
-const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: SESSION_DIR }),
-  webVersion: WA_WEB_VERSION,
-  webVersionCache: {
-    type: "remote",
-    remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html",
-  },
-  puppeteer: {
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    executablePath: findBrowser(),
-  },
-});
-
 // state: loading | qr | authenticated | ready | auth_failure | disconnected
 let state = "loading";
 let qrDataUrl = null;
+let client = null;
+let busy = false; // sedang membuat/mengganti instance client
 
-client.on("qr", async (qr) => {
-  state = "qr";
-  try {
-    qrDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
-  } catch {
+function newClient() {
+  return new Client({
+    authStrategy: new LocalAuth({ dataPath: SESSION_DIR }),
+    webVersion: WA_WEB_VERSION,
+    webVersionCache: {
+      type: "remote",
+      remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html",
+    },
+    puppeteer: {
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      executablePath: findBrowser(),
+    },
+  });
+}
+
+function attachHandlers(c) {
+  c.on("qr", async (qr) => {
+    state = "qr";
+    try {
+      qrDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
+    } catch {
+      qrDataUrl = null;
+    }
+  });
+  c.on("authenticated", () => { state = "authenticated"; qrDataUrl = null; });
+  c.on("ready", () => { state = "ready"; qrDataUrl = null; console.log("WhatsApp siap mengirim struk."); });
+  c.on("auth_failure", () => { state = "auth_failure"; qrDataUrl = null; });
+  c.on("disconnected", () => {
     qrDataUrl = null;
-  }
-});
-client.on("authenticated", () => { state = "authenticated"; qrDataUrl = null; });
-client.on("ready", () => { state = "ready"; qrDataUrl = null; console.log("WhatsApp siap mengirim struk."); });
-client.on("auth_failure", () => { state = "auth_failure"; qrDataUrl = null; });
-client.on("disconnected", () => {
-  state = "disconnected";
+    if (busy) return; // reset sedang ditangani (mis. logout) — jangan tumpuk
+    state = "disconnected";
+    setTimeout(() => resetClient(), 800);
+  });
+}
+
+// Membangun ulang instance Client dari nol. Ini satu-satunya cara andal untuk
+// mendapatkan QR baru setelah logout / sesi putus — memanggil initialize() ulang
+// pada instance lama sering menggantung di "loading" tanpa memunculkan QR.
+async function resetClient({ logout = false } = {}) {
+  if (busy) return;
+  busy = true;
+  state = "loading";
   qrDataUrl = null;
-  // Re-init agar QR baru muncul (mis. setelah logout / sesi putus).
-  setTimeout(() => client.initialize().catch(() => {}), 1500);
-});
-client.initialize().catch((err) => {
-  console.error("Gagal memulai WhatsApp (cek Chromium/Puppeteer):", err?.message || err);
-});
+  if (client) {
+    if (logout) { try { await client.logout(); } catch { /* mungkin belum login */ } }
+    try { await client.destroy(); } catch { /* abaikan */ }
+  }
+  client = newClient();
+  attachHandlers(client);
+  try {
+    await client.initialize();
+  } catch (err) {
+    console.error("Gagal memulai WhatsApp (cek Chromium/Puppeteer):", err?.message || err);
+  } finally {
+    busy = false;
+  }
+}
+
+resetClient();
 
 // 08xx / +62xx / 62xx → 62xx@c.us
 function toChatId(phone) {
@@ -122,14 +150,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && req.url === "/logout") {
-    try {
-      await client.logout();
-      state = "loading";
-      qrDataUrl = null;
-      return json(200, { ok: true });
-    } catch (err) {
-      return json(500, { ok: false, error: String(err?.message || err) });
-    }
+    // Jangan tunggu selesai (destroy+init bisa lama) — segera balas, UI akan
+    // polling /status hingga QR baru muncul. resetClient membuat instance segar.
+    state = "loading";
+    qrDataUrl = null;
+    resetClient({ logout: true });
+    return json(200, { ok: true });
   }
 
   if (req.method === "POST" && req.url === "/send") {
