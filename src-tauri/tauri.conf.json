@@ -1,13 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Denka",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "id.denka.pos",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeBuildCommand": "node scripts/install-whatsapp.mjs && pnpm build"
   },
   "app": {
     "windows": [
