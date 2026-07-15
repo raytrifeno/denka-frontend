@@ -27,6 +27,19 @@ function renderReceipt(doc, r) {
   };
 
   // Header
+  if (r.store?.showLogo && r.store?.logo) {
+    const m = /^data:image\/\w+;base64,(.+)$/.exec(r.store.logo);
+    if (m) {
+      try {
+        const size = 46;
+        doc.image(Buffer.from(m[1], "base64"), (W - size) / 2, doc.y, { fit: [size, size], align: "center" });
+        doc.y += size + 4;
+        doc.x = M;
+      } catch {
+        // logo tak valid — lewati, tetap render struk
+      }
+    }
+  }
   doc.font("Helvetica-Bold").fontSize(14).fillColor("#111827")
     .text((r.store?.name || "Denka").toUpperCase(), M, doc.y, { width: CW, align: "center" });
   if (r.store?.showAddress) {

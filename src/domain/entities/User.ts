@@ -10,6 +10,7 @@ export interface UserData {
   password: string;
   role: UserRole;
   active: boolean;
+  avatar?: string;
   lastLogin?: Date | null;
 }
 
@@ -25,6 +26,7 @@ export class User extends Entity {
   private _password: string;
   private _role: UserRole;
   private _active: boolean;
+  private _avatar?: string;
   private _lastLogin: Date | null;
 
   constructor(data: UserData) {
@@ -35,6 +37,7 @@ export class User extends Entity {
     this._password = data.password;
     this._role = data.role;
     this._active = data.active;
+    this._avatar = data.avatar;
     this._lastLogin = data.lastLogin ?? null;
   }
 
@@ -43,6 +46,7 @@ export class User extends Entity {
   get email(): string { return this._email; }
   get role(): UserRole { return this._role; }
   get active(): boolean { return this._active; }
+  get avatar(): string | undefined { return this._avatar; }
   get lastLogin(): Date | null { return this._lastLogin; }
 
   initials(): string {
@@ -82,6 +86,7 @@ export class User extends Entity {
       password: this._password,
       role: this._role,
       active: this._active,
+      avatar: this._avatar,
       lastLogin: this._lastLogin,
     };
   }
@@ -99,6 +104,7 @@ export class User extends Entity {
     email: string;
     role: UserRole;
     active: boolean;
+    avatar?: string;
     newPassword?: string;
   }): void {
     this._name = data.name;
@@ -106,6 +112,11 @@ export class User extends Entity {
     this._email = data.email;
     this._role = data.role;
     this._active = data.active;
+    if (data.avatar !== undefined) this._avatar = data.avatar || undefined;
     if (data.newPassword) this._password = data.newPassword;
+  }
+
+  setAvatar(avatar: string | undefined): void {
+    this._avatar = avatar || undefined;
   }
 }

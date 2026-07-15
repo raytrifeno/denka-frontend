@@ -32,7 +32,8 @@ import { Badge } from "./ui/badge";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
 import { Separator } from "./ui/separator";
-import { Avatar, AvatarFallback } from "./ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { pickImage } from "../image";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -181,22 +182,39 @@ function StoreProfileSection() {
     toast.success("Profil toko disimpan");
   }
 
+  async function chooseLogo() {
+    try {
+      const logo = await pickImage({ maxDim: 256, quality: 0.9, keepAlpha: true });
+      if (logo) setStore((s) => ({ ...s, logo }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal memuat logo.");
+    }
+  }
+
   return (
     <div>
       <SectionHeader title="Profil Toko" desc="Informasi ini digunakan pada header struk dan invoice." />
       <div className="space-y-4">
         <Field label="Logo Toko">
           <div className="flex items-center gap-4">
-            <div className="flex size-16 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <Laptop className="size-7" />
-            </div>
+            {store.logo ? (
+              <img src={store.logo} alt="Logo toko" className="size-16 rounded-xl border border-border object-contain bg-muted" />
+            ) : (
+              <div className="flex size-16 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <Laptop className="size-7" />
+              </div>
+            )}
             <button
               type="button"
+              onClick={chooseLogo}
               className="flex flex-col items-center gap-1 rounded-xl border-2 border-dashed border-border px-5 py-3 text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/50"
             >
               <UploadCloud className="size-5" />
               <span className="text-xs">Upload logo (PNG/JPG)</span>
             </button>
+            {store.logo && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setStore((s) => ({ ...s, logo: undefined }))}>Hapus</Button>
+            )}
           </div>
         </Field>
         <Field label="Nama Toko">
@@ -649,11 +667,21 @@ function AccountSection() {
     name: user?.name ?? "",
     username: user?.username ?? "",
     email: user?.email ?? "",
+    avatar: user?.avatar ?? "",
   });
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [show, setShow] = useState(false);
 
   if (!user) return null;
+
+  async function chooseAvatar() {
+    try {
+      const avatar = await pickImage({ maxDim: 256, quality: 0.85 });
+      if (avatar) setProfile((p) => ({ ...p, avatar }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal memuat foto.");
+    }
+  }
 
   function save() {
     if (!user) return;
@@ -675,6 +703,7 @@ function AccountSection() {
         password: pw.next,
         role: user.role,
         active: user.active,
+        avatar: profile.avatar,
       },
       user.id,
     );
@@ -694,17 +723,22 @@ function AccountSection() {
       <div className="space-y-4">
         <div className="flex items-center gap-4">
           <Avatar className="size-16">
+            {profile.avatar && <AvatarImage src={profile.avatar} alt="" />}
             <AvatarFallback className="bg-primary text-primary-foreground">
               {user.initials()}
             </AvatarFallback>
           </Avatar>
           <button
             type="button"
+            onClick={chooseAvatar}
             className="flex flex-col items-center gap-1 rounded-xl border-2 border-dashed border-border px-5 py-3 text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/50"
           >
             <UploadCloud className="size-5" />
             <span className="text-xs">Ubah foto profil</span>
           </button>
+          {profile.avatar && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setProfile((p) => ({ ...p, avatar: "" }))}>Hapus</Button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

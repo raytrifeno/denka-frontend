@@ -7,6 +7,7 @@ export interface StoreProfile {
   name: string;
   address: string;
   phone: string;
+  logo?: string;
 }
 
 export interface ReceiptSettings {

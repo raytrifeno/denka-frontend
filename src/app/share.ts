@@ -59,7 +59,7 @@ export async function logoutWhatsApp(): Promise<void> {
 
 // Data struk terstruktur — layanan yang merender jadi PDF.
 export type ReceiptData = {
-  store: { name: string; address: string; phone: string; showAddress: boolean };
+  store: { name: string; address: string; phone: string; showAddress: boolean; showLogo?: boolean; logo?: string };
   number: string;
   cashier: string;
   date: string;
@@ -117,6 +117,7 @@ const RECEIPT_CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font: 12px/1.5 "Courier New", monospace; color: #000; padding: 12px; width: 300px; }
   h1 { font-size: 15px; text-align: center; }
+  .logo { display: block; margin: 0 auto 6px; max-height: 60px; max-width: 70%; object-fit: contain; }
   .muted { color: #444; }
   .center { text-align: center; }
   .row { display: flex; justify-content: space-between; gap: 8px; }

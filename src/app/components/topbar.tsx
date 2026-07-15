@@ -10,7 +10,7 @@ import {
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Avatar, AvatarFallback } from "./ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Separator } from "./ui/separator";
 import {
   DropdownMenu,
@@ -170,6 +170,7 @@ export function Topbar({ role, onToggleCollapse, onOpenMobile, onLogout }: Topba
               className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-accent"
             >
               <Avatar className="size-9">
+                {user?.avatar && <AvatarImage src={user.avatar} alt="" />}
                 <AvatarFallback className="bg-primary text-primary-foreground">
                   {user?.initials() ?? "?"}
                 </AvatarFallback>

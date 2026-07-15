@@ -11,6 +11,7 @@ export interface UserForm {
   password: string;
   role: UserRole;
   active: boolean;
+  avatar: string;
 }
 
 export type UserErrors = Record<string, string>;
@@ -91,6 +92,7 @@ export class UserController extends Observable {
         email: form.email.trim(),
         role: form.role,
         active: form.active,
+        avatar: form.avatar,
         newPassword: form.password || undefined,
       });
       this.db.users.touch();
@@ -104,6 +106,7 @@ export class UserController extends Observable {
           password: form.password,
           role: form.role,
           active: form.active,
+          avatar: form.avatar || undefined,
         }),
       );
     }

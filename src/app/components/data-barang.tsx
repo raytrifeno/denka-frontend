@@ -53,6 +53,8 @@ import {
   type ProductForm,
 } from "../../domain/controllers/ProductController";
 import { useController } from "../hooks/use-controller";
+import { pickImage } from "../image";
+import { toast } from "sonner";
 
 // ---------- metadata tampilan ----------
 const CATEGORY_META: Record<ProductCategory, { label: string; icon: LucideIcon; tint: string }> = {
@@ -234,7 +236,11 @@ export function DataBarang() {
                   <TableRow key={product.id} className="h-[52px]" data-state={selected.has(product.id) ? "selected" : undefined}>
                     <TableCell><Checkbox checked={selected.has(product.id)} onCheckedChange={() => toggleOne(product.id)} aria-label={`Pilih ${product.name}`} /></TableCell>
                     <TableCell>
-                      <div className={cn("flex size-9 items-center justify-center rounded-lg", meta.tint)}><Icon className="size-4" /></div>
+                      {product.image ? (
+                        <img src={product.image} alt="" className="size-9 rounded-lg border border-border object-cover" />
+                      ) : (
+                        <div className={cn("flex size-9 items-center justify-center rounded-lg", meta.tint)}><Icon className="size-4" /></div>
+                      )}
                     </TableCell>
                     <TableCell className="font-mono text-muted-foreground">{product.code}</TableCell>
                     <TableCell>{product.name}</TableCell>
@@ -292,7 +298,7 @@ function IconBtn({ icon: Icon, label, danger, onClick }: { icon: LucideIcon; lab
 }
 
 // ---------- drawer ----------
-const EMPTY_FORM: ProductForm = { name: "", code: "", category: "", supplier: "", purchasePrice: "", sellPrice: "", stock: "", minStock: "", specification: "" };
+const EMPTY_FORM: ProductForm = { name: "", code: "", category: "", supplier: "", purchasePrice: "", sellPrice: "", stock: "", minStock: "", specification: "", image: "" };
 
 function ItemDrawer({
   open, onOpenChange, editing,
@@ -308,6 +314,7 @@ function ItemDrawer({
       name: editing.name, code: editing.code, category: editing.category, supplier: editing.supplier,
       purchasePrice: String(editing.purchasePrice), sellPrice: String(editing.sellPrice),
       stock: String(editing.stock), minStock: String(editing.minStock), specification: editing.specification || "",
+      image: editing.image || "",
     } : EMPTY_FORM);
     setErrors({});
     setLastKey(key);
@@ -317,6 +324,15 @@ function ItemDrawer({
   function set<K extends keyof ProductForm>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: undefined }));
+  }
+
+  async function choosePhoto() {
+    try {
+      const image = await pickImage({ maxDim: 800, quality: 0.82 });
+      if (image) set("image", image);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal memuat foto.");
+    }
   }
   function setPrice(k: "purchasePrice" | "sellPrice", raw: string) { set(k, raw.replace(/\D/g, "")); }
   const fmt = (d: string) => (d ? Number(d).toLocaleString("id-ID") : "");
@@ -344,11 +360,23 @@ function ItemDrawer({
 
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
           {/* photo upload */}
-          <button type="button" className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-7 text-muted-foreground transition-colors hover:border-primary-500 hover:bg-muted">
-            <UploadCloud className="size-6" />
-            <span className="text-sm">Tarik &amp; lepas foto, atau klik untuk pilih</span>
-            <span className="text-xs">PNG, JPG hingga 2MB</span>
-          </button>
+          {form.image ? (
+            <div className="relative overflow-hidden rounded-xl border border-border">
+              <img src={form.image} alt="Foto barang" className="h-40 w-full object-contain bg-muted" />
+              <div className="absolute right-2 top-2 flex gap-2">
+                <Button type="button" size="sm" variant="secondary" onClick={choosePhoto}>Ganti</Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => set("image", "")} aria-label="Hapus foto">
+                  <X className="size-4" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" onClick={choosePhoto} className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-7 text-muted-foreground transition-colors hover:border-primary-500 hover:bg-muted">
+              <UploadCloud className="size-6" />
+              <span className="text-sm">Klik untuk pilih foto barang</span>
+              <span className="text-xs">PNG, JPG hingga 8MB</span>
+            </button>
+          )}
 
           <Field label="Nama Barang" error={errors.name}>
             <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Contoh: Laptop ASUS Vivobook 14" aria-invalid={!!errors.name} className={cn(errors.name && "border-destructive")} />

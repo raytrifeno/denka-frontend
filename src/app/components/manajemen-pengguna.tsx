@@ -15,7 +15,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Switch } from "./ui/switch";
-import { Avatar, AvatarFallback } from "./ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
   Select,
   SelectContent,
@@ -47,6 +47,8 @@ import {
   type UserForm,
 } from "../../domain/controllers/UserController";
 import { useController } from "../hooks/use-controller";
+import { pickImage } from "../image";
+import { toast } from "sonner";
 
 const ROLE_BADGE: Record<UserRole, { label: string; className: string }> = {
   pemilik: { label: "Pemilik", className: "bg-[#7c3aed]/15 text-[#7c3aed]" },
@@ -111,6 +113,7 @@ export function ManajemenPengguna() {
                 <TableRow key={u.id}>
                   <TableCell>
                     <Avatar className="size-9">
+                      {u.avatar && <AvatarImage src={u.avatar} alt="" />}
                       <AvatarFallback className="bg-primary text-xs text-primary-foreground">
                         {u.initials()}
                       </AvatarFallback>
@@ -191,7 +194,7 @@ function IconButton({
 
 // ---------- dialog ----------
 const EMPTY: UserForm = {
-  name: "", username: "", email: "", password: "", role: "admin", active: true,
+  name: "", username: "", email: "", password: "", role: "admin", active: true, avatar: "",
 };
 
 const initialsOf = (name: string) =>
@@ -214,7 +217,7 @@ function UserDialog({
   if (open && lastId !== currentId) {
     setForm(
       editing
-        ? { name: editing.name, username: editing.username, email: editing.email, password: "", role: editing.role, active: editing.active }
+        ? { name: editing.name, username: editing.username, email: editing.email, password: "", role: editing.role, active: editing.active, avatar: editing.avatar || "" }
         : EMPTY,
     );
     setErrors({});
@@ -226,6 +229,15 @@ function UserDialog({
   function set<K extends keyof UserForm>(k: K, v: UserForm[K]) {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: "" }));
+  }
+
+  async function chooseAvatar() {
+    try {
+      const avatar = await pickImage({ maxDim: 256, quality: 0.85 });
+      if (avatar) set("avatar", avatar);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal memuat foto.");
+    }
   }
 
   function submit() {
@@ -251,17 +263,22 @@ function UserDialog({
           {/* avatar upload */}
           <div className="flex items-center gap-4">
             <Avatar className="size-16">
+              {form.avatar && <AvatarImage src={form.avatar} alt="" />}
               <AvatarFallback className="bg-primary text-primary-foreground">
                 {form.name ? initialsOf(form.name) : "?"}
               </AvatarFallback>
             </Avatar>
             <button
               type="button"
+              onClick={chooseAvatar}
               className="flex flex-col items-center gap-1 rounded-xl border-2 border-dashed border-border px-5 py-3 text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/50"
             >
               <UploadCloud className="size-5" />
               <span className="text-xs">Upload foto profil (opsional)</span>
             </button>
+            {form.avatar && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => set("avatar", "")}>Hapus</Button>
+            )}
           </div>
 
           <Field label="Nama Lengkap" error={errors.name}>

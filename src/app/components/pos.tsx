@@ -66,6 +66,7 @@ function receiptHTML(sale: Sale): string {
        <div class="row"><span class="muted">Kembalian</span><span>${rupiah(sale.change())}</span></div>`
     : "";
   return `
+    ${receipt.showLogo && store.logo ? `<img class="logo" src="${store.logo}" alt="">` : ""}
     <h1>${esc(store.name)}</h1>
     ${receipt.showAddress ? `<p class="center muted">${esc(store.address)}<br>${esc(store.phone)}</p>` : ""}
     <hr>
@@ -93,6 +94,8 @@ function receiptData(sale: Sale): ReceiptData {
       address: store.address,
       phone: store.phone,
       showAddress: settings.receipt.showAddress,
+      showLogo: settings.receipt.showLogo,
+      logo: store.logo,
     },
     number: sale.number,
     cashier: sale.cashier,
@@ -405,7 +408,7 @@ export function POS() {
                     {/* photo */}
                     <div className="relative aspect-[4/3] bg-muted">
                       <img
-                        src={KATEGORI_FOTO[p.category]}
+                        src={p.image ?? KATEGORI_FOTO[p.category]}
                         alt=""
                         loading="lazy"
                         className="h-full w-full object-cover"

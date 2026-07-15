@@ -14,6 +14,7 @@ export interface ProductData {
   minStock: number;
   supplier: string;
   specification?: string;
+  image?: string;
 }
 
 /**
@@ -31,6 +32,7 @@ export class Product extends Entity {
   private _minStock: number;
   private _supplier: string;
   private _specification?: string;
+  private _image?: string;
 
   constructor(data: ProductData) {
     super(data.id);
@@ -43,6 +45,7 @@ export class Product extends Entity {
     this._minStock = Math.max(0, data.minStock);
     this._supplier = data.supplier;
     this._specification = data.specification;
+    this._image = data.image;
   }
 
   // ----- getters -----
@@ -55,6 +58,7 @@ export class Product extends Entity {
   get minStock(): number { return this._minStock; }
   get supplier(): string { return this._supplier; }
   get specification(): string | undefined { return this._specification; }
+  get image(): string | undefined { return this._image; }
 
   set category(category: ProductCategory) { this._category = category; }
 
@@ -100,6 +104,7 @@ export class Product extends Entity {
       minStock: this._minStock,
       supplier: this._supplier,
       specification: this._specification,
+      image: this._image,
     };
   }
 
@@ -118,5 +123,6 @@ export class Product extends Entity {
     this._minStock = Math.max(0, data.minStock);
     this._supplier = data.supplier;
     this._specification = data.specification;
+    this._image = data.image;
   }
 }

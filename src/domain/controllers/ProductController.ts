@@ -14,6 +14,7 @@ export interface ProductForm {
   stock: string;
   minStock: string;
   specification: string;
+  image: string;
 }
 
 export type ProductFormErrors = Partial<Record<keyof ProductForm, string>>;
@@ -92,6 +93,7 @@ export class ProductController extends Observable {
       minStock: Number(form.minStock),
       supplier: form.supplier,
       specification: form.specification.trim() || undefined,
+      image: form.image || undefined,
     };
 
     const existing = editId ? this.db.products.findById(editId) : undefined;
